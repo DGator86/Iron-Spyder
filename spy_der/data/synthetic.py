@@ -147,10 +147,17 @@ def build_snapshot(spec: ScenarioSpec, *, timestamp: datetime | None = None) -> 
     now = timestamp or datetime(2026, 8, 3, 15, 30, tzinfo=UTC)
 
     quotes: list[OptionQuote] = []
+    seen_expirations: set[datetime] = set()
     for days in spec.expiry_days:
         expiration = datetime.combine(
             (now + timedelta(days=days)).date(), MARKET_CLOSE, tzinfo=UTC
         )
+        # Roll forward if the expiry has already passed or would collide with
+        # one already added, so the synthetic chain never contains expired
+        # contracts unless spec.corruptions explicitly injects them.
+        while expiration <= now or expiration in seen_expirations:
+            expiration = expiration + timedelta(days=1)
+        seen_expirations.add(expiration)
         tau = max(0.0, (expiration - now).total_seconds()) / (365.0 * 24.0 * 3600.0)
         span = spec.spot * spec.strike_width_pct
         lo = spec.strike_step * np.floor((spec.spot - span) / spec.strike_step)
