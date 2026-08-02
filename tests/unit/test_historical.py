@@ -17,12 +17,27 @@ from pathlib import Path
 import pytest
 
 from spy_der.analytics import pricing
+from spy_der.backtest.engine import run_backtest
 from spy_der.data.providers import historical as hist
 from spy_der.domain.enums import OptionRight
 from spy_der.domain.market import PriceBar
+from spy_der.execution.paper_broker import PaperBroker
+from spy_der.models.forecast_engine import ForecastEngine, ForecastEngineConfig
+from spy_der.optimizer.engine import OptimizerConfig, StrategyOptimizer
+from spy_der.pipeline import DecisionPipeline, PipelineConfig
 
 RATE = 0.04
 DIV = 0.013
+
+
+def build_replay_pipeline() -> DecisionPipeline:
+    """A small-but-real pipeline; path counts trimmed to keep the test quick."""
+    return DecisionPipeline(
+        forecast_engine=ForecastEngine(config=ForecastEngineConfig(n_paths=150)),
+        optimizer=StrategyOptimizer(OptimizerConfig(valuation_paths=100, valuation_steps=16)),
+        broker=PaperBroker(),
+        config=PipelineConfig(persist=False),
+    )
 
 
 # ---------------------------------------------------------------- fixtures
@@ -781,3 +796,66 @@ def test_ingested_snapshots_are_internally_consistent(tmp_path):
     vols = [q.implied_volatility for q in snapshot.option_chain]
     assert max(vols) - min(vols) < 0.01
     assert all(math.isfinite(v) for v in vols)
+
+
+def test_history_streams_straight_into_a_backtest(tmp_path):
+    """The path real data takes: files -> snapshots -> pipeline, never a list.
+
+    ``run_backtest`` must consume the generator lazily, because a year of
+    one-minute chains does not fit in memory.
+    """
+    expiry = datetime(2026, 3, 20, 20, 0, tzinfo=UTC)
+    rows: list[dict[str, object]] = []
+    for hour in range(14, 20):
+        rows.extend(
+            chain_rows(stamp=datetime(2026, 3, 2, hour, 30, tzinfo=UTC), expiry=expiry)
+        )
+    path = write_csv(tmp_path / "SPY_2026-03-02.csv", rows)
+    bars = make_bars(400, datetime(2026, 3, 2, 12, 0, tzinfo=UTC))
+
+    pipeline = build_replay_pipeline()
+    steps_done = 0
+    inner_step = pipeline.step
+
+    def counting_step(snapshot):
+        nonlocal steps_done
+        outcome = inner_step(snapshot)
+        steps_done += 1
+        return outcome
+
+    pipeline.step = counting_step  # type: ignore[method-assign]
+
+    interleaved: list[tuple[int, int]] = []
+
+    def watched():
+        for index, snapshot in enumerate(hist.iter_snapshots([path], bars=bars)):
+            # Record how many decisions had been taken when this snapshot was
+            # pulled. Draining the generator first would give (1, 0), (2, 0)...
+            interleaved.append((index, steps_done))
+            yield snapshot
+
+    result = run_backtest(pipeline, watched())
+
+    assert result.decision_count == 6
+    assert 0.0 <= result.no_trade_rate <= 1.0
+    # Each snapshot is pulled only after the previous one was decided on, so
+    # memory stays bounded by a single chain rather than the whole history.
+    assert interleaved == [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)]
+
+
+def test_a_backtest_over_history_never_sees_a_future_snapshot(tmp_path):
+    """Point-in-time is structural: the pipeline is handed one snapshot at a time."""
+    expiry = datetime(2026, 3, 20, 20, 0, tzinfo=UTC)
+    rows: list[dict[str, object]] = []
+    for hour in range(14, 18):
+        rows.extend(
+            chain_rows(stamp=datetime(2026, 3, 2, hour, 30, tzinfo=UTC), expiry=expiry)
+        )
+    path = write_csv(tmp_path / "chain.csv", rows)
+
+    seen: list[datetime] = []
+    for snapshot in hist.iter_snapshots([path], bars=make_bars(400, datetime(2026, 3, 2, 12, 0, tzinfo=UTC))):
+        seen.append(snapshot.timestamp)
+        assert all(b.timestamp <= snapshot.timestamp for b in snapshot.spy_bars)
+        assert all(q.timestamp == snapshot.timestamp for q in snapshot.option_chain)
+    assert seen == sorted(seen)

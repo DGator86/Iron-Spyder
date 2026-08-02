@@ -18,17 +18,22 @@ worst case a crash can cost is one cycle rather than the whole session.
 waits for the next open instead of spinning.
 
 **Shut down gracefully.** SIGTERM and SIGINT stop the loop at a cycle boundary
-and save state. Open positions are *not* auto-liquidated on shutdown: dumping a
-defined-risk book into whatever bid exists at that instant is usually worse
-than leaving it with its stops intact, and the operator may simply be
-restarting the process.
+and save state. Waits are interruptible, so a signal that lands mid-sleep is
+acted on at once rather than whenever the sleep happens to end — a process
+supervisor escalates to SIGKILL on its own schedule (``docker stop`` after ten
+seconds, systemd after ninety), and being killed mid-sleep is exactly the
+ungraceful exit the durable state store exists to survive.
+
+Open positions are *not* auto-liquidated on shutdown: dumping a defined-risk
+book into whatever bid exists at that instant is usually worse than leaving it
+with its stops intact, and the operator may simply be restarting the process.
 """
 
 from __future__ import annotations
 
 import logging
 import signal
-import time
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -109,14 +114,21 @@ class Supervisor:
     """Optional ``(severity, message)`` sink for out-of-band notification."""
 
     clock: Callable[[], datetime] = lambda: datetime.now(tz=UTC)
-    sleeper: Callable[[float], None] = time.sleep
+
+    sleeper: Callable[[float], None] | None = None
+    """Override the wait, for tests. ``None`` uses the interruptible default."""
 
     stats: SupervisorStats = field(default_factory=SupervisorStats)
-    _stopping: bool = field(default=False, init=False)
+    _stop_event: threading.Event = field(default_factory=threading.Event, init=False)
     _last_heartbeat: datetime | None = field(default=None, init=False)
     _closed_session: object = field(default=None, init=False)
+    _awaiting_open: datetime | None = field(default=None, init=False)
 
     # -- lifecycle ---------------------------------------------------------
+
+    @property
+    def _stopping(self) -> bool:
+        return self._stop_event.is_set()
 
     def install_signal_handlers(self) -> None:
         """Stop at the next cycle boundary on SIGTERM/SIGINT.
@@ -131,11 +143,26 @@ class Supervisor:
                 logger.warning("could not install handler for %s", sig)
 
     def _handle_signal(self, signum: int, _frame: object) -> None:  # pragma: no cover
-        logger.info("received signal %s; stopping after the current cycle", signum)
+        logger.info("received signal %s; stopping", signum)
         self.request_stop()
 
     def request_stop(self) -> None:
-        self._stopping = True
+        """Ask the loop to stop, waking it if it is sleeping."""
+        self._stop_event.set()
+
+    def _sleep(self, seconds: float) -> None:
+        """Wait, returning early if a stop is requested.
+
+        ``time.sleep`` would hold the process for the full duration — up to
+        ``idle_poll`` over a weekend — so a SIGTERM would sit unacted-on until
+        it expired and the process supervisor would SIGKILL first.
+        """
+        if seconds <= 0:
+            return
+        if self.sleeper is not None:
+            self.sleeper(seconds)
+            return
+        self._stop_event.wait(seconds)
 
     def startup(self) -> RestoreReport:
         """Restore state and verify the book before the first decision."""
@@ -274,7 +301,7 @@ class Supervisor:
             self.config.max_failure_backoff,
         )
         self._notify("warning", f"cycle failed: {self.stats.last_error}")
-        self.sleeper(delay.total_seconds())
+        self._sleep(delay.total_seconds())
 
     def _check_kill_switch(self) -> None:
         switch = self.pipeline.risk_engine.kill_switch
@@ -296,19 +323,23 @@ class Supervisor:
         wait = min(
             (upcoming.open_at - now).total_seconds(), self.config.idle_poll.total_seconds()
         )
-        if wait > 0:
-            logger.debug(
-                "market closed; next open %s (sleeping %.0fs)",
+        # Announce each new target once at INFO, then poll quietly. An
+        # unattended process that logs nothing for a weekend is
+        # indistinguishable from a hung one, but repeating the same line every
+        # five minutes buries anything that matters.
+        if upcoming.open_at != self._awaiting_open:
+            self._awaiting_open = upcoming.open_at
+            logger.info(
+                "market closed; waiting for the open at %s",
                 upcoming.open_at.isoformat(timespec="minutes"),
-                wait,
             )
-            self.sleeper(wait)
+        else:
+            logger.debug("market closed; sleeping %.0fs", wait)
+        self._sleep(wait)
 
     def _sleep_until_next_decision(self, now: datetime) -> None:
         elapsed = (self.clock() - now).total_seconds()
-        remaining = self.config.decision_interval.total_seconds() - elapsed
-        if remaining > 0:
-            self.sleeper(remaining)
+        self._sleep(self.config.decision_interval.total_seconds() - elapsed)
 
     def _maybe_close_for_session_end(self, session: object, now: datetime) -> None:
         """Flatten before the bell, once per session."""

@@ -113,7 +113,7 @@ regimes, where simulated realized volatility exceeds the implied level.
 ## Running unattended
 
 ```bash
-python -m scripts.run --state var/state.db --audit var/audit.db
+python -m scripts.run --mode paper --interval 5 --state var/state.db
 ```
 
 The supervisor owns the clock and the failure handling, so nothing needs a
@@ -141,8 +141,13 @@ babysitter:
   be priced to close escalate to a kill switch rather than being left silently
   open.
 - **Shutdown is graceful but does not liquidate.** `SIGTERM` finishes the
-  current cycle, persists state, and exits with the book intact. Dumping
-  positions into whatever liquidity exists at shutdown is the worse failure.
+  current cycle, persists state, and exits with the book intact — in
+  milliseconds, because every wait is interruptible rather than a plain
+  `time.sleep`. That matters under a process supervisor: `docker stop`
+  escalates to `SIGKILL` after ten seconds and systemd after ninety, so a loop
+  that only notices the signal when its sleep expires gets killed mid-flight
+  instead of saving. Dumping positions into whatever liquidity exists at
+  shutdown is the worse failure, so the book is left with its stops intact.
 
 ---
 
@@ -152,9 +157,16 @@ The loader turns recorded chains into the same `MarketSnapshot` objects the live
 path consumes, so replaying history is just a provider swap.
 
 ```bash
-python -m scripts.ingest inspect --path /data/spy --pattern 'SPY_*.csv'
-python -m scripts.ingest load    --path /data/spy --bars /data/spy/SPY_bars.csv
+python -m scripts.ingest inspect  --path /data/spy --pattern 'SPY_*.csv'
+python -m scripts.ingest load     --path /data/spy --bars /data/spy/SPY_bars.csv
+python -m scripts.ingest backtest --path /data/spy --bars /data/spy/SPY_bars.csv
 ```
+
+`inspect` reports the schema mapping, `load` reports what was ingested and its
+data quality, and `backtest` streams the result through the *same*
+`DecisionPipeline` the live path uses and prints the metrics — one command from
+recorded files to results, with no decision logic that differs between replay
+and production.
 
 Run `inspect` first. Column naming is not standardized across vendors, so
 `historical.COLUMN_ALIASES` maps a wide set of spellings onto a canonical schema
