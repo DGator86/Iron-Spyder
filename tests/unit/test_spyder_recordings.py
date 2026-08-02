@@ -31,7 +31,10 @@ def test_discover_and_inspect():
     report = inspect_recordings(files, sample=0)
     assert report["files"] == 1
     assert report["records_scanned"] == 3
-    assert report["sessions"][0]["statuses"].get("OPEN", 0) >= 1
+    session = report["sessions"][0]
+    assert session["statuses"].get("OPEN", 0) >= 1
+    assert session["max_open_chain_contracts"] >= session["open_chain_contracts"]
+    assert session["max_open_chain_contracts"] > 0
 
 
 def test_snapshot_from_open_record():

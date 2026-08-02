@@ -386,7 +386,12 @@ def iter_snapshots(
 
 
 def inspect_recordings(paths: Sequence[Path], *, sample: int = 3) -> dict[str, Any]:
-    """Summarize tapes without loading every contract into memory."""
+    """Summarize tapes without loading every contract into memory.
+
+    ``open_chain_contracts`` is the first OPEN tick's chain length (often empty
+    at the open bell). ``max_open_chain_contracts`` is the peak OPEN chain size
+    in the file — use that to spot sessions whose tapes never carried a chain.
+    """
     stats = ImportStats()
     sessions: list[dict[str, Any]] = []
     for path in paths:
@@ -394,7 +399,8 @@ def inspect_recordings(paths: Sequence[Path], *, sample: int = 3) -> dict[str, A
         statuses: dict[str, int] = {}
         first_open: str | None = None
         last_ts: str | None = None
-        chain_len = 0
+        first_chain_len = 0
+        max_chain_len = 0
         try:
             for record in iter_records(path):
                 stats.records += 1
@@ -402,13 +408,19 @@ def inspect_recordings(paths: Sequence[Path], *, sample: int = 3) -> dict[str, A
                 status = str(snap.get("session_status") or "?")
                 statuses[status] = statuses.get(status, 0) + 1
                 last_ts = str(snap.get("timestamp") or "")
-                if first_open is None and status == "OPEN":
-                    first_open = last_ts
+                if status == "OPEN":
                     chain_len = len(snap.get("option_chain") or [])
+                    if chain_len > max_chain_len:
+                        max_chain_len = chain_len
+                    if first_open is None:
+                        first_open = last_ts
+                        first_chain_len = chain_len
         except ValueError as exc:
             stats.parse_errors += 1
             stats.note(str(exc))
             continue
+        if statuses.get("OPEN", 0) and max_chain_len == 0:
+            stats.note(f"{path.name}: OPEN records present but option_chain is empty")
         sessions.append(
             {
                 "file": path.name,
@@ -416,7 +428,8 @@ def inspect_recordings(paths: Sequence[Path], *, sample: int = 3) -> dict[str, A
                 "statuses": statuses,
                 "first_open": first_open,
                 "last_timestamp": last_ts,
-                "open_chain_contracts": chain_len,
+                "open_chain_contracts": first_chain_len,
+                "max_open_chain_contracts": max_chain_len,
             }
         )
         if len(sessions) >= sample and sample > 0:
