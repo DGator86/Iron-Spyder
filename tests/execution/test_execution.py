@@ -119,6 +119,20 @@ def test_fill_probability_is_never_certain(scored_snapshot):
     assert fill_probability(quotes, leg_count=2, contracts=1, model=CostModel()) < 1.0
 
 
+def test_fill_probability_uses_open_interest_when_volume_is_zero(scored_snapshot):
+    """Historical tapes often report volume=0; OI must still inform fill odds."""
+    snapshot = scored_snapshot("broad_range")
+    expiry = snapshot.expirations[-1]
+    quotes = tuple(snapshot.quote_for(expiry, k, CALL) for k in snapshot.strikes_for(expiry)[:2])
+    zero_volume = tuple(replace(q, volume=0, open_interest=max(q.open_interest, 2_000)) for q in quotes)
+    empty = tuple(replace(q, volume=0, open_interest=0) for q in quotes)
+    model = CostModel()
+    with_oi = fill_probability(zero_volume, leg_count=2, contracts=1, model=model)
+    without = fill_probability(empty, leg_count=2, contracts=1, model=model)
+    assert with_oi > without
+    assert with_oi >= 0.25
+
+
 # --------------------------------------------------------------------------
 # Order construction
 # --------------------------------------------------------------------------

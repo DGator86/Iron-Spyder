@@ -1,4 +1,7 @@
 # Backtest: reduced path counts so walk-forward folds complete in reasonable time.
+# Confidence is a multiplicative product (raw × certainty × stability × …);
+# ordinary pin/range sessions on recorded SPY tapes top out near 0.10, so the
+# live 0.20 gate would make historical replay structurally no-trade.
 starting_equity: 100000.0
 audit_path: spyder_backtest.db
 
@@ -6,6 +9,13 @@ optimizer:
   valuation_paths: 400
   valuation_steps: 32
   max_candidates_per_family: 12
+  # Recorded tapes omit quote size and often report volume=0; even with OI
+  # proxies, complex fills sit near the live 0.25 gate.
+  min_fill_probability: 0.20
 
 forecast:
   n_paths: 1000
+
+risk:
+  trade:
+    min_confidence: 0.08
