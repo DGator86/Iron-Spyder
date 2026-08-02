@@ -182,6 +182,16 @@ def _daily_breakdown(result: BacktestResult) -> list[dict[str, Any]]:
     return out
 
 
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_jsonable(v) for v in value]
+    return value
+
+
 def build_report(
     *,
     files: list[Path],
@@ -192,38 +202,41 @@ def build_report(
     finished_at: datetime,
 ) -> dict[str, Any]:
     equity = result.equity_curve
-    return {
-        "generated_at": finished_at.isoformat(),
-        "mode": mode,
-        "sessions": [p.stem for p in files],
-        "session_count": len(files),
-        "elapsed_seconds": (finished_at - started_at).total_seconds(),
-        "import": stats.summary(),
-        "import_detail": {
-            "files": stats.files,
-            "records": stats.records,
-            "snapshots": stats.snapshots,
-            "contracts_kept": stats.contracts_kept,
-            "contracts_dropped": stats.contracts_dropped,
-            "iv_derived": stats.iv_derived,
-            "iv_unavailable": stats.iv_unavailable,
-            "skipped_status": stats.skipped_status,
-            "parse_errors": stats.parse_errors,
-            "notes": list(stats.notes),
-        },
-        "summary": {
-            "decisions": result.decision_count,
-            "trades": result.trade_count,
-            "starting_equity": equity[0][1] if equity else None,
-            "ending_equity": equity[-1][1] if equity else None,
-            "metrics": result.metrics().as_dict(),
-        },
-        "daily": _daily_breakdown(result),
-        "trades": [_trade_row(p) for p in result.closed_positions],
-        "equity_curve": [
-            {"timestamp": ts.isoformat(), "equity": eq} for ts, eq in equity[:: max(1, len(equity) // 200)]
-        ],
-    }
+    stride = max(1, len(equity) // 200) if equity else 1
+    return _jsonable(
+        {
+            "generated_at": finished_at.isoformat(),
+            "mode": mode,
+            "sessions": [p.stem for p in files],
+            "session_count": len(files),
+            "elapsed_seconds": (finished_at - started_at).total_seconds(),
+            "import": stats.summary(),
+            "import_detail": {
+                "files": stats.files,
+                "records": stats.records,
+                "snapshots": stats.snapshots,
+                "contracts_kept": stats.contracts_kept,
+                "contracts_dropped": stats.contracts_dropped,
+                "iv_derived": stats.iv_derived,
+                "iv_unavailable": stats.iv_unavailable,
+                "skipped_status": stats.skipped_status,
+                "parse_errors": stats.parse_errors,
+                "notes": list(stats.notes),
+            },
+            "summary": {
+                "decisions": result.decision_count,
+                "trades": result.trade_count,
+                "starting_equity": equity[0][1] if equity else None,
+                "ending_equity": equity[-1][1] if equity else None,
+                "metrics": result.metrics().as_dict(),
+            },
+            "daily": _daily_breakdown(result),
+            "trades": [_trade_row(p) for p in result.closed_positions],
+            "equity_curve": [
+                {"timestamp": ts.isoformat(), "equity": eq} for ts, eq in equity[::stride]
+            ],
+        }
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -313,11 +326,6 @@ def main(argv: list[str] | None = None) -> int:
         finished_at=finished,
     )
 
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8")
-        print(f"wrote {args.output}", flush=True)
-
     summary = {
         "sessions": report["sessions"],
         "summary": report["summary"],
@@ -334,7 +342,20 @@ def main(argv: list[str] | None = None) -> int:
         "trades": report["trades"],
         "output": str(args.output) if args.output else None,
     }
+    # Always emit the summary first — the live API container mounts state read-only,
+    # so a report path under /var/lib/iron-spyder can fail after a long replay.
     print(json.dumps(summary, indent=2, default=str))
+
+    if args.output:
+        try:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(
+                json.dumps(report, indent=2, default=str) + "\n", encoding="utf-8"
+            )
+            print(f"wrote {args.output}", flush=True)
+        except OSError as exc:
+            print(f"warning: could not write {args.output}: {exc}", flush=True)
+            return 2
     return 0
 
 
