@@ -1,0 +1,10 @@
+# Shadow: orders are generated and logged but never submitted (spec 40 phase 3).
+starting_equity: 100000.0
+audit_path: spyder_shadow.db
+
+optimizer:
+  valuation_paths: 800
+  valuation_steps: 48
+
+forecast:
+  n_paths: 2000

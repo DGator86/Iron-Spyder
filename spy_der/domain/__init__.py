@@ -1,0 +1,101 @@
+"""Core domain types for SPY-DER.
+
+Everything in this package is a frozen dataclass with no I/O and no model
+dependencies, so it can be imported from any layer without creating cycles.
+"""
+
+from spy_der.domain.enums import (
+    CONTRACT_MULTIPLIER,
+    NO_TRADE_STATES,
+    DealerSignConvention,
+    ExerciseStyle,
+    ExitReason,
+    KillSwitchReason,
+    MarketState,
+    OptionRight,
+    OrderIntent,
+    OrderStatus,
+    StrategyFamily,
+    TradeDirection,
+)
+from spy_der.domain.execution import (
+    BrokerState,
+    Fill,
+    MultiLegOrder,
+    Position,
+    RiskDecision,
+)
+from spy_der.domain.forecast import (
+    HORIZON_MINUTES,
+    HORIZONS,
+    QUANTILES,
+    ForecastBundle,
+    HorizonForecast,
+    dispersion,
+    normalized_certainty,
+    shannon_entropy,
+    total_variation_stability,
+)
+from spy_der.domain.market import (
+    ContextSnapshot,
+    MarketSnapshot,
+    OptionQuote,
+    OptionTrade,
+    PriceBar,
+    SpyQuote,
+    nearest_value,
+    realized_volatility,
+)
+from spy_der.domain.strategy import (
+    NO_TRADE_ID,
+    ExitPlan,
+    LiquidityProfile,
+    OptionLeg,
+    Strategy,
+    StrategyCandidate,
+    StrategyGreeks,
+)
+
+__all__ = [
+    "CONTRACT_MULTIPLIER",
+    "HORIZONS",
+    "HORIZON_MINUTES",
+    "NO_TRADE_ID",
+    "NO_TRADE_STATES",
+    "QUANTILES",
+    "BrokerState",
+    "ContextSnapshot",
+    "DealerSignConvention",
+    "ExerciseStyle",
+    "ExitPlan",
+    "ExitReason",
+    "Fill",
+    "ForecastBundle",
+    "HorizonForecast",
+    "KillSwitchReason",
+    "LiquidityProfile",
+    "MarketSnapshot",
+    "MarketState",
+    "MultiLegOrder",
+    "OptionLeg",
+    "OptionQuote",
+    "OptionRight",
+    "OptionTrade",
+    "OrderIntent",
+    "OrderStatus",
+    "Position",
+    "PriceBar",
+    "RiskDecision",
+    "SpyQuote",
+    "Strategy",
+    "StrategyCandidate",
+    "StrategyFamily",
+    "StrategyGreeks",
+    "TradeDirection",
+    "dispersion",
+    "nearest_value",
+    "normalized_certainty",
+    "realized_volatility",
+    "shannon_entropy",
+    "total_variation_stability",
+]

@@ -1,0 +1,15 @@
+# Live is defined but not executable. No live broker adapter ships, and
+# Settings.assert_live_allowed() refuses until every spec 40 gate is recorded
+# as met. Tightened limits here reflect spec 40 phase 4 (limited live).
+starting_equity: 100000.0
+audit_path: spyder_live.db
+
+risk:
+  base_risk_fraction: 0.0025
+
+optimizer:
+  valuation_paths: 1500
+  valuation_steps: 64
+
+forecast:
+  n_paths: 3000
