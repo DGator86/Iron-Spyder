@@ -65,9 +65,14 @@ spy_der/
 ├── backtest/      point-in-time replay, walk-forward, purging, cost stress
 ├── monitoring/    drift, calibration, and execution health
 ├── runtime/       market calendar, durable state, unattended supervisor
+├── vps/           VPS module: state root, heartbeats, live_state, status API, deploy CLI
 ├── app/           FastAPI surface and Streamlit dashboard
 └── pipeline.py    the end-to-end decision cycle
 ```
+
+The VPS surface is its own module. `spy_der.runtime` owns the decision loop;
+`spy_der.vps` owns the file layout, liveness publishing, read-only status API,
+and the pull-based deploy units under `deploy/`.
 
 The backtest drives the *same* `DecisionPipeline` as the live path. There is no
 parallel backtest logic that could drift from production behaviour, and the
@@ -89,7 +94,12 @@ uvicorn spy_der.app.api:app --reload            # API on :8000
 streamlit run spy_der/app/dashboard.py          # dashboard on :8501
 ```
 
-Docker: `docker compose up --build`.
+Docker (CPU-only live stack on a **dedicated** VPS — see `deploy/CPU_VPS.md`):
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
 
 ### What the demo shows
 
@@ -115,6 +125,42 @@ regimes, where simulated realized volatility exceeds the implied level.
 ```bash
 python -m scripts.run --mode paper --interval 5 --state var/state.db
 ```
+
+### Dedicated CPU VPS (not a GPU server)
+
+Iron-Spyder runs on its **own** CPU machine. Do not co-tenant with SPY-DER,
+0DTE, or a GPU host. The live workload is NumPy/SciPy/pandas/scikit-learn plus
+FastAPI/Streamlit — a GPU would sit idle. Full sizing and the live/research
+split are in [`deploy/CPU_VPS.md`](deploy/CPU_VPS.md).
+
+| Role | Machine | Footprint |
+|---|---|---|
+| Live / paper | Dedicated CPU VPS | 8 vCPU, 32 GB RAM, 250–500 GB NVMe, Ubuntu 24.04, **no GPU** |
+| Research | Second CPU box (on-demand) | 16–32 cores, 64–128 GB RAM, 1–2 TB NVMe |
+
+```bash
+# Live VPS
+cp .env.example .env
+docker compose up -d --build
+
+# Research worker (different host)
+docker compose -f docker-compose.research.yml run --rm research \
+    python -m scripts.backtest
+```
+
+First-time box install (as root on the Iron-Spyder CPU VPS):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DGator86/Iron-Spyder/main/deploy/remote-deploy.sh | bash
+```
+
+That provisions `/opt/iron-spyder`, `/var/lib/iron-spyder`, Docker Compose,
+`iron-spyder.service`, and the self-update timer. Runtime units stay down until
+`/etc/iron-spyder/iron-spyder.env` exists. Subsequent pushes land via the
+pull-based update timer.
+
+The VPS module (`spy_der.vps`) publishes heartbeats and `live_state.json` under
+the Iron-Spyder state root; the status API serves them on loopback `:8788`.
 
 The supervisor owns the clock and the failure handling, so nothing needs a
 babysitter:

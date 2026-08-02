@@ -1,0 +1,17 @@
+[Unit]
+# Pull-based deploy: checks the origin for a new commit on the deploy branch and,
+# when one lands, runs deploy/remote-deploy.sh. Requires only OUTBOUND https, so
+# deploys keep working when inbound SSH to the box is blocked or rate-limited.
+Description=Iron-Spyder self-update (pull-based deploy)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env bash /opt/iron-spyder/deploy/self-update.sh
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=iron-spyder-update
+
+SuccessExitStatus=0

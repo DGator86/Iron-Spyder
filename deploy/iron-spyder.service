@@ -1,0 +1,22 @@
+[Unit]
+# Live stack via Docker Compose on the dedicated CPU VPS.
+# Restart policy for individual containers lives in docker-compose.yml;
+# this unit only ensures the compose project is up after boot / deploy.
+Description=Iron-Spyder live stack (CPU-only Docker Compose)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/iron-spyder
+EnvironmentFile=-/etc/iron-spyder/iron-spyder.env
+Environment=IRON_SPYDER_STATE_ROOT=/var/lib/iron-spyder
+# Compose reads /opt/iron-spyder/.env (installed from the secrets file).
+ExecStart=/usr/bin/docker compose -f /opt/iron-spyder/docker-compose.yml up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -f /opt/iron-spyder/docker-compose.yml stop
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,252 @@
+"""VPS supervisor service — the long-running unit on the box.
+
+Wraps :class:`~spy_der.runtime.supervisor.Supervisor` and publishes:
+
+* a heartbeat under ``<state_root>/health/supervisor.json``
+* ``<state_root>/live_state.json`` for the dashboard API
+
+Decision math stays in the pipeline. This process owns only process lifecycle
+and the file surface other VPS services read.
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from pathlib import Path
+
+from spy_der.config.settings import Mode, load_settings
+from spy_der.data.persistence.audit import AuditStore
+from spy_der.data.providers.base import MarketDataProvider, SyntheticProvider
+from spy_der.data.synthetic import SCENARIOS, scenario
+from spy_der.execution.paper_broker import PaperBroker, PaperBrokerConfig
+from spy_der.models.forecast_engine import ForecastEngine
+from spy_der.optimizer.engine import StrategyOptimizer
+from spy_der.pipeline import DecisionPipeline, PipelineConfig, PipelineResult
+from spy_der.risk.engine import RiskEngine
+from spy_der.runtime.state_store import RuntimeStateStore
+from spy_der.runtime.supervisor import Supervisor, SupervisorConfig, SupervisorStats, log_alert
+from spy_der.vps.heartbeat import write_heartbeat
+from spy_der.vps.live_state import build_live_state, write_live_state
+from spy_der.vps.paths import ensure_state_tree, state_paths
+
+__all__ = ["VpsService", "VpsServiceConfig", "build_arg_parser", "build_service", "main"]
+
+log = logging.getLogger("spy_der.vps.service")
+
+SERVICE_NAME = "supervisor"
+
+
+@dataclass(frozen=True, slots=True)
+class VpsServiceConfig:
+    state_root: str = "/var/lib/iron-spyder"
+    mode: str = Mode.PAPER.value
+    decision_interval: timedelta = timedelta(minutes=5)
+    scenario: str = "broad_range"
+    max_cycles: int | None = None
+    """Stop after N cycles. Used by tests and dry runs; the unit leaves this unset."""
+
+
+@dataclass
+class VpsService:
+    """Run the decision supervisor and publish VPS state files."""
+
+    supervisor: Supervisor
+    config: VpsServiceConfig
+    mode: str
+    _last_result: PipelineResult | None = field(default=None, init=False)
+    _original_cycle: Callable[..., PipelineResult | None] | None = field(
+        default=None, init=False, repr=False
+    )
+    _original_heartbeat: Callable[..., None] | None = field(default=None, init=False, repr=False)
+    _original_closed: Callable[..., None] | None = field(default=None, init=False, repr=False)
+
+    def run(self) -> SupervisorStats:
+        ensure_state_tree(self.config.state_root)
+        self._install_hooks()
+        try:
+            # Publish once at start so the dashboard never sees a silent fresh unit.
+            self._publish(None, self.supervisor.clock(), note="supervisor starting")
+            return self.supervisor.run()
+        finally:
+            self._remove_hooks()
+            self._publish(self._last_result, self.supervisor.clock(), note="supervisor stopped")
+
+    def _install_hooks(self) -> None:
+        self._original_cycle = self.supervisor.run_cycle
+        self._original_heartbeat = self.supervisor._heartbeat
+        self._original_closed = self.supervisor._on_market_closed
+
+        def instrumented_cycle(now: datetime | None = None) -> PipelineResult | None:
+            assert self._original_cycle is not None
+            result = self._original_cycle(now)
+            if result is not None:
+                self._last_result = result
+            return result
+
+        def instrumented_heartbeat(now: datetime) -> None:
+            assert self._original_heartbeat is not None
+            self._original_heartbeat(now)
+            self._publish(self._last_result, now)
+
+        def instrumented_closed(now: datetime) -> None:
+            assert self._original_closed is not None
+            # Refresh liveness before sleeping so a weekend wait is not "stale".
+            self._publish(self._last_result, now, note="market closed; waiting for next open")
+            self._original_closed(now)
+
+        self.supervisor.run_cycle = instrumented_cycle  # type: ignore[method-assign]
+        self.supervisor._heartbeat = instrumented_heartbeat  # type: ignore[method-assign]
+        self.supervisor._on_market_closed = instrumented_closed  # type: ignore[method-assign]
+
+    def _remove_hooks(self) -> None:
+        if self._original_cycle is not None:
+            self.supervisor.run_cycle = self._original_cycle  # type: ignore[method-assign]
+        if self._original_heartbeat is not None:
+            self.supervisor._heartbeat = self._original_heartbeat  # type: ignore[method-assign]
+        if self._original_closed is not None:
+            self.supervisor._on_market_closed = self._original_closed  # type: ignore[method-assign]
+
+    def _publish(
+        self,
+        result: PipelineResult | None,
+        now: datetime,
+        *,
+        note: str = "",
+    ) -> None:
+        if result is not None:
+            self._last_result = result
+        stats = self.supervisor.stats.as_dict()
+        kill = list(self.supervisor.pipeline.risk_engine.kill_switch.reasons)
+        payload = build_live_state(
+            mode=self.mode,
+            stats=stats,
+            result=self._last_result,
+            kill_switches=kill,
+            open_positions=self.supervisor.pipeline.portfolio.open_count,
+            equity=self.supervisor.pipeline.broker.equity,
+            note=note,
+            now=now,
+        )
+        try:
+            write_live_state(payload, state_root=self.config.state_root)
+        except OSError:
+            log.exception("failed to write live_state")
+
+        interval = self.config.decision_interval.total_seconds()
+        detail = (
+            f"cycles={stats['cycles']} trades={stats['trades']} open={payload['open_positions']}"
+        )
+        write_heartbeat(
+            self.config.state_root,
+            SERVICE_NAME,
+            interval_seconds=max(interval, 60.0),
+            detail=detail,
+            extra={"mode": self.mode, "kill_switches": kill},
+            now=now,
+        )
+
+
+def build_pipeline(
+    *,
+    mode: str,
+    state_root: str | Path,
+    audit_path: str | Path | None = None,
+) -> DecisionPipeline:
+    settings = load_settings(mode)
+    settings.assert_live_allowed()
+    paths = state_paths(state_root)
+    return DecisionPipeline(
+        forecast_engine=ForecastEngine(config=settings.forecast),
+        optimizer=StrategyOptimizer(settings.optimizer),
+        risk_engine=RiskEngine(config=settings.risk),
+        broker=PaperBroker(
+            config=PaperBrokerConfig(starting_equity=settings.starting_equity),
+            costs=settings.costs,
+        ),
+        config=PipelineConfig(data_quality=settings.data_quality, costs=settings.costs),
+        audit=AuditStore(str(audit_path or paths.audit_db)),
+    )
+
+
+def build_service(
+    config: VpsServiceConfig,
+    *,
+    provider: MarketDataProvider | None = None,
+    alert: Callable[[str, str], None] | None = log_alert,
+    clock: Callable[[], datetime] | None = None,
+    sleeper: Callable[[float], None] | None = None,
+) -> VpsService:
+    paths = ensure_state_tree(config.state_root)
+    pipeline = build_pipeline(mode=config.mode, state_root=config.state_root)
+    market = provider or SyntheticProvider(
+        spec=scenario(config.scenario), step=config.decision_interval
+    )
+    supervisor = Supervisor(
+        pipeline=pipeline,
+        provider=market,
+        state_store=RuntimeStateStore(paths.runtime_db),
+        config=SupervisorConfig(
+            decision_interval=config.decision_interval,
+            max_cycles=config.max_cycles,
+            # Publish VPS heartbeats every cycle rather than every 15 minutes —
+            # the file surface is what the dashboard reads, not the log line.
+            heartbeat_interval=timedelta(seconds=0),
+        ),
+        alert=alert,
+    )
+    if clock is not None:
+        supervisor.clock = clock
+    if sleeper is not None:
+        supervisor.sleeper = sleeper
+    return VpsService(supervisor=supervisor, config=config, mode=config.mode)
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Iron-Spyder VPS supervisor (decision loop + live_state publisher)"
+    )
+    parser.add_argument(
+        "--state-root",
+        default=None,
+        help="VPS state root (default: $IRON_SPYDER_STATE_ROOT or /var/lib/iron-spyder)",
+    )
+    parser.add_argument(
+        "--mode",
+        default=Mode.PAPER.value,
+        choices=[m.value for m in Mode],
+        help="deployment mode (live is refused until phase-2 gates are met)",
+    )
+    parser.add_argument("--interval", type=int, default=5, help="minutes between decisions")
+    parser.add_argument("--scenario", default="broad_range", choices=sorted(SCENARIOS))
+    parser.add_argument("--max-cycles", type=int, help="stop after N cycles (dry run)")
+    parser.add_argument("--verbose", action="store_true")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_arg_parser().parse_args(argv)
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+    )
+    root = args.state_root or state_paths().root
+    config = VpsServiceConfig(
+        state_root=str(root),
+        mode=args.mode,
+        decision_interval=timedelta(minutes=args.interval),
+        scenario=args.scenario,
+        max_cycles=args.max_cycles,
+    )
+    service = build_service(config)
+    service.supervisor.install_signal_handlers()
+    stats = service.run()
+    log.info("final: %s", stats.as_dict())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

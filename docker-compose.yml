@@ -1,12 +1,155 @@
+# Iron-Spyder live stack — dedicated CPU VPS only.
+#
+# Target host: separate 8-vCPU / 32 GB RAM / NVMe box (Ubuntu 24.04 x86-64).
+# Do not co-tenant with SPY-DER, 0DTE, or a GPU server. Do not attach GPUs.
+# See deploy/CPU_VPS.md.
+#
+#   cp .env.example .env && docker compose up -d --build
+#
+# Research workloads belong on a second CPU machine:
+#   docker compose -f docker-compose.research.yml run --rm research …
+
+name: iron-spyder
+
+x-app-build: &app-build
+  context: .
+  dockerfile: Dockerfile
+
+x-state-env: &state-env
+  IRON_SPYDER_STATE_ROOT: /var/lib/iron-spyder
+  CUDA_VISIBLE_DEVICES: ""
+  NVIDIA_VISIBLE_DEVICES: void
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 services:
-  api:
-    build: .
+  supervisor:
+    build: *app-build
+    image: iron-spyder:cpu
+    container_name: iron-spyder-supervisor
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      <<: *state-env
+      IRON_SPYDER_MODE: ${IRON_SPYDER_MODE:-paper}
+    command:
+      - spyder-vps
+      - supervisor
+      - --state-root
+      - /var/lib/iron-spyder
+      - --mode
+      - ${IRON_SPYDER_MODE:-paper}
+      - --interval
+      - ${IRON_SPYDER_INTERVAL_MINUTES:-5}
+    volumes:
+      - iron_spyder_state:/var/lib/iron-spyder
+    cpus: ${IRON_SPYDER_SUPERVISOR_CPUS:-2.0}
+    mem_limit: ${IRON_SPYDER_SUPERVISOR_MEM:-8g}
+    logging: *default-logging
+    networks:
+      - iron_spyder_net
+
+  status-api:
+    build: *app-build
+    image: iron-spyder:cpu
+    container_name: iron-spyder-status-api
+    restart: unless-stopped
+    depends_on:
+      - supervisor
+    env_file:
+      - .env
+    environment:
+      <<: *state-env
+    command:
+      - spyder-vps
+      - dashboard-api
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8788"
+      - --state-root
+      - /var/lib/iron-spyder
+    volumes:
+      - iron_spyder_state:/var/lib/iron-spyder:ro
     ports:
-      - "8000:8000"
-    command: uvicorn spy_der.app.api:app --host 0.0.0.0 --port 8000
+      - "127.0.0.1:8788:8788"
+    cpus: ${IRON_SPYDER_STATUS_CPUS:-0.5}
+    mem_limit: ${IRON_SPYDER_STATUS_MEM:-512m}
+    logging: *default-logging
+    networks:
+      - iron_spyder_net
+
+  api:
+    build: *app-build
+    image: iron-spyder:cpu
+    container_name: iron-spyder-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      <<: *state-env
+    command:
+      - uvicorn
+      - spy_der.app.api:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    volumes:
+      - iron_spyder_state:/var/lib/iron-spyder:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    cpus: ${IRON_SPYDER_API_CPUS:-1.5}
+    mem_limit: ${IRON_SPYDER_API_MEM:-4g}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging: *default-logging
+    networks:
+      - iron_spyder_net
 
   dashboard:
-    build: .
+    build: *app-build
+    image: iron-spyder:cpu
+    container_name: iron-spyder-dashboard
+    restart: unless-stopped
+    depends_on:
+      - api
+    env_file:
+      - .env
+    environment:
+      <<: *state-env
+    command:
+      - streamlit
+      - run
+      - spy_der/app/dashboard.py
+      - --server.address
+      - 0.0.0.0
+      - --server.port
+      - "8501"
+      - --browser.gatherUsageStats
+      - "false"
     ports:
-      - "8501:8501"
-    command: streamlit run spy_der/app/dashboard.py --server.address 0.0.0.0 --server.port 8501
+      - "127.0.0.1:8501:8501"
+    cpus: ${IRON_SPYDER_DASHBOARD_CPUS:-1.0}
+    mem_limit: ${IRON_SPYDER_DASHBOARD_MEM:-2g}
+    logging: *default-logging
+    networks:
+      - iron_spyder_net
+
+volumes:
+  iron_spyder_state:
+    name: iron-spyder-state
+
+networks:
+  iron_spyder_net:
+    name: iron-spyder-net
+    driver: bridge
