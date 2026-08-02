@@ -199,6 +199,20 @@ babysitter:
 
 ## Historical data
 
+### SPY-DER VPS recordings
+
+Legacy session tapes staged from the old SPY-DER box live under
+`/var/lib/iron-spyder/imports/spy-der/market/*.jsonl` on the dedicated CPU VPS
+(never mixed into the live runtime tree). Convert and replay them with:
+
+```bash
+spyder-import-spyder inspect  --path /var/lib/iron-spyder/imports/spy-der/market
+spyder-import-spyder backtest --path /var/lib/iron-spyder/imports/spy-der/market \
+    --session 2026-07-31 --limit 50
+```
+
+### Vendor CSV / Parquet
+
 The loader turns recorded chains into the same `MarketSnapshot` objects the live
 path consumes, so replaying history is just a provider swap.
 

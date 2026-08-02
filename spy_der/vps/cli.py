@@ -19,6 +19,7 @@ def main(argv: list[str] | None = None) -> int:
         print("  supervisor       Run the VPS decision supervisor")
         print("  dashboard-api    Read-only HTTP API for live state + system status")
         print("  status           Print system status JSON for the state root")
+        print("  import-spyder    Inspect/load/backtest SPY-DER market recordings")
         return 0 if args else 2
 
     cmd, rest = args[0], args[1:]
@@ -35,6 +36,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if cmd == "status":
         return _status(rest)
+
+    if cmd in {"import-spyder", "import_spyder", "import"}:
+        from scripts.import_spyder import main as import_main
+
+        return import_main(rest)
 
     print(f"unknown command: {cmd}", file=sys.stderr)
     return 2
