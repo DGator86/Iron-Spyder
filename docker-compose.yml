@@ -47,7 +47,8 @@ services:
       - --interval
       - ${IRON_SPYDER_INTERVAL_MINUTES:-5}
     volumes:
-      - iron_spyder_state:/var/lib/iron-spyder
+      # Bind the host state tree so deploy.json, backups, and containers share one root.
+      - ${IRON_SPYDER_STATE_ROOT:-/var/lib/iron-spyder}:/var/lib/iron-spyder
     cpus: ${IRON_SPYDER_SUPERVISOR_CPUS:-2.0}
     mem_limit: ${IRON_SPYDER_SUPERVISOR_MEM:-8g}
     logging: *default-logging
@@ -75,7 +76,8 @@ services:
       - --state-root
       - /var/lib/iron-spyder
     volumes:
-      - iron_spyder_state:/var/lib/iron-spyder:ro
+      # RW so /health can publish a heartbeat under health/; no decision state is mutated.
+      - ${IRON_SPYDER_STATE_ROOT:-/var/lib/iron-spyder}:/var/lib/iron-spyder
     ports:
       - "127.0.0.1:8788:8788"
     cpus: ${IRON_SPYDER_STATUS_CPUS:-0.5}
@@ -101,7 +103,7 @@ services:
       - --port
       - "8000"
     volumes:
-      - iron_spyder_state:/var/lib/iron-spyder:ro
+      - ${IRON_SPYDER_STATE_ROOT:-/var/lib/iron-spyder}:/var/lib/iron-spyder:ro
     ports:
       - "127.0.0.1:8000:8000"
     cpus: ${IRON_SPYDER_API_CPUS:-1.5}
@@ -144,10 +146,6 @@ services:
     logging: *default-logging
     networks:
       - iron_spyder_net
-
-volumes:
-  iron_spyder_state:
-    name: iron-spyder-state
 
 networks:
   iron_spyder_net:
