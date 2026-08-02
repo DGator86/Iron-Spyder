@@ -32,6 +32,8 @@ dev = [
 spyder-demo = "scripts.demo:main"
 spyder-paper = "scripts.paper_trade:main"
 spyder-backtest = "scripts.backtest:main"
+spyder-ingest = "scripts.ingest:main"
+spyder-run = "scripts.run:main"
 
 [tool.setuptools.packages.find]
 include = ["spy_der*", "scripts*"]

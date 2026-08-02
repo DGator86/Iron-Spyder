@@ -16,8 +16,6 @@ from spy_der.optimizer.engine import OptimizerConfig, StrategyOptimizer
 from spy_der.pipeline import DecisionPipeline, PipelineConfig
 from spy_der.strategies.validation import validate_defined_risk
 
-UTC = UTC
-
 
 def build_pipeline(audit: AuditStore | None = None, **config) -> DecisionPipeline:
     return DecisionPipeline(
