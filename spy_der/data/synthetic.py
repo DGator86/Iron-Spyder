@@ -151,6 +151,8 @@ def build_snapshot(spec: ScenarioSpec, *, timestamp: datetime | None = None) -> 
         expiration = datetime.combine(
             (now + timedelta(days=days)).date(), MARKET_CLOSE, tzinfo=UTC
         )
+        if expiration <= now:
+            continue  # skip already-expired expirations; quoting them would be invalid
         tau = max(0.0, (expiration - now).total_seconds()) / (365.0 * 24.0 * 3600.0)
         span = spec.spot * spec.strike_width_pct
         lo = spec.strike_step * np.floor((spec.spot - span) / spec.strike_step)
