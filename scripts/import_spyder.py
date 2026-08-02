@@ -155,11 +155,12 @@ def _daily_breakdown(result: BacktestResult) -> list[dict[str, Any]]:
         if decision.forecast is not None:
             row["states"][decision.forecast.dominant_state.value] += 1
 
-    pnl_by_day: Counter[str] = Counter()
+    pnl_by_day: dict[str, float] = {}
     for position in result.closed_positions:
         if position.closed_at is None:
             continue
-        pnl_by_day[position.closed_at.date().isoformat()] += position.realized_pnl
+        day_key = position.closed_at.date().isoformat()
+        pnl_by_day[day_key] = pnl_by_day.get(day_key, 0.0) + position.realized_pnl
 
     out: list[dict[str, Any]] = []
     for day in sorted(by_day):
