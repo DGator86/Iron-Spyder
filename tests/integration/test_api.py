@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 fastapi_testclient = pytest.importorskip("fastapi.testclient")
 
 from spy_der.app.api import app  # noqa: E402
 from spy_der.app.state import STATE  # noqa: E402
+
+#: Mid-session weekday — avoids after-hours 0DTE expiry flaking CI.
+_API_SESSION_TS = datetime(2026, 8, 3, 15, 30, tzinfo=UTC)
 
 
 @pytest.fixture(scope="module")
@@ -17,6 +22,7 @@ def client(tmp_path_factory):
     STATE.audit = AuditStore(tmp_path_factory.mktemp("api") / "audit.db")
     STATE.reset()
     STATE.set_scenario("broad_range")
+    STATE.run_once(_API_SESSION_TS)
     with fastapi_testclient.TestClient(app) as test_client:
         yield test_client
 

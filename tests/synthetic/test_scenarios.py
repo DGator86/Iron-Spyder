@@ -13,6 +13,7 @@ requires walk-forward validation on real data before the weights can be trusted.
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import UTC, datetime
 
 import pytest
 
@@ -106,6 +107,22 @@ def test_clean_scenarios_score_well():
         report = assess(build_scenario(name))
         assert report.is_tradeable, f"{name} scored DQ={report.score:.2f}"
         assert report.score > 0.7
+
+
+@pytest.mark.parametrize(
+    "timestamp",
+    [
+        datetime(2026, 8, 2, 20, 1, tzinfo=UTC),  # Sunday just after cash close
+        datetime(2026, 8, 3, 21, 45, tzinfo=UTC),  # weekday after hours
+        datetime(2026, 8, 1, 12, 0, tzinfo=UTC),  # Saturday midday
+    ],
+)
+def test_clean_scenario_stays_tradeable_outside_the_cash_session(timestamp):
+    """Wall-clock demos must not ship an already-expired 0DTE tenor."""
+    snapshot = build_scenario("broad_range", timestamp=timestamp)
+    assert all(q.expiration > snapshot.timestamp for q in snapshot.option_chain)
+    report = assess(snapshot)
+    assert report.is_tradeable, report.summary()
 
 
 def test_pin_scenario_has_a_dominant_gamma_strike():
