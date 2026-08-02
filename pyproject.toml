@@ -33,6 +33,7 @@ spyder-demo = "scripts.demo:main"
 spyder-paper = "scripts.paper_trade:main"
 spyder-backtest = "scripts.backtest:main"
 spyder-ingest = "scripts.ingest:main"
+spyder-import-spyder = "scripts.import_spyder:main"
 spyder-run = "scripts.run:main"
 spyder-vps = "spy_der.vps.cli:main"
 
