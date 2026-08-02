@@ -1,0 +1,11 @@
+# Shared defaults. Mode files override only what differs.
+starting_equity: 100000.0
+audit_path: spyder_audit.db
+
+risk:
+  base_risk_fraction: 0.005
+
+costs:
+  commission_per_contract: 0.65
+  exchange_fee_per_contract: 0.05
+  spread_capture: 0.5

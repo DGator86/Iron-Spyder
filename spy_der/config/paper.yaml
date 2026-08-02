@@ -1,0 +1,13 @@
+# Paper: production-shaped settings with simulated execution (spec 40 phase 2).
+starting_equity: 100000.0
+audit_path: spyder_paper.db
+
+optimizer:
+  valuation_paths: 800
+  valuation_steps: 48
+
+forecast:
+  n_paths: 2000
+
+risk:
+  base_risk_fraction: 0.005

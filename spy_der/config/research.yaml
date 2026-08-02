@@ -1,0 +1,12 @@
+# Research: wide search, no execution. Used for model development only.
+starting_equity: 100000.0
+audit_path: spyder_research.db
+
+optimizer:
+  valuation_paths: 2000
+  valuation_steps: 96
+  max_candidates_per_family: 32
+  max_total_candidates: 400
+
+forecast:
+  n_paths: 4000

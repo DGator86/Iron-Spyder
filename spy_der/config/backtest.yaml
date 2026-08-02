@@ -1,0 +1,11 @@
+# Backtest: reduced path counts so walk-forward folds complete in reasonable time.
+starting_equity: 100000.0
+audit_path: spyder_backtest.db
+
+optimizer:
+  valuation_paths: 400
+  valuation_steps: 32
+  max_candidates_per_family: 12
+
+forecast:
+  n_paths: 1000
