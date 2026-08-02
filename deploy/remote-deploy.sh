@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# remote-deploy.sh — idempotent deploy of Iron-Spyder on a VPS.
+# remote-deploy.sh — idempotent deploy of Iron-Spyder on its dedicated CPU VPS.
 #
-# Runs ON the VPS as root. Provisions on first run (service user, checkout,
-# venv, state tree, systemd units) and fast-forwards on every later run. Safe to
-# re-run any number of times.
+# Runs ON the Iron-Spyder host as root. This host is CPU-only and separate from
+# any SPY-DER / 0DTE / GPU machine. See deploy/CPU_VPS.md.
 #
-# The ONE thing this never touches is the secrets file
-# (/etc/iron-spyder/iron-spyder.env): it is created by hand once and the script
-# refuses to start units until it exists, so a key is never overwritten by a
-# deploy.
+# Default path: Docker Compose live stack + pull-based self-update timer.
+# The secrets file (/etc/iron-spyder/iron-spyder.env) is never overwritten.
 set -euo pipefail
 
 REPO_URL="${IRON_SPYDER_REPO_URL:-https://github.com/DGator86/Iron-Spyder.git}"
@@ -17,20 +14,18 @@ APP_DIR="${IRON_SPYDER_APP_DIR:-/opt/iron-spyder}"
 ENV_FILE=/etc/iron-spyder/iron-spyder.env
 CONFIG_FILE=/etc/iron-spyder/config.yaml
 STATE_DIR=/var/lib/iron-spyder
+COMPOSE_ENV="$APP_DIR/.env"
 SVC_USER=iron-spyder
 
-#: Long-running services. Installed and restarted every deploy.
+#: Compose-backed live unit + pull-based update timer.
 SERVICES=(
-    iron-spyder-supervisor
-    iron-spyder-dashboard-api
+    iron-spyder
 )
 
-#: Timer-driven units. Installed and enabled; the timer owns the schedule.
 TIMERS=(
     iron-spyder-update
 )
 
-#: State subdirectories the VPS runtime owns (deploy/config.yaml.example).
 STATE_DIRS=(
     health decisions positions audit reports configs
 )
@@ -42,15 +37,24 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-log "System packages"
+log "System packages (CPU host — no NVIDIA/CUDA packages)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv python3-pip git >/dev/null
+apt-get install -y -qq ca-certificates curl git openssl >/dev/null
+
+# Docker Engine from Ubuntu's docker.io package is enough for Compose V2.
+if ! command -v docker >/dev/null 2>&1; then
+    apt-get install -y -qq docker.io docker-compose-v2 >/dev/null
+    systemctl enable --now docker
+fi
+if ! docker compose version >/dev/null 2>&1; then
+    apt-get install -y -qq docker-compose-v2 >/dev/null
+fi
 
 log "Service user + directories"
 id -u "$SVC_USER" >/dev/null 2>&1 || \
     useradd --system --no-create-home --shell /usr/sbin/nologin "$SVC_USER"
-mkdir -p "$APP_DIR" /etc/iron-spyder "$STATE_DIR"
+mkdir -p "$APP_DIR" /etc/iron-spyder "$STATE_DIR" /var/backups/iron-spyder
 
 log "Code -> $DEPLOY_REF"
 if [ ! -d "$APP_DIR/.git" ]; then
@@ -66,30 +70,16 @@ fi
 git -C "$APP_DIR" reset --hard "$TARGET"
 echo "Deployed commit: $(git -C "$APP_DIR" rev-parse --short HEAD)"
 
-log "Virtualenv + package"
-if [ ! -x "$APP_DIR/venv/bin/python" ]; then
-    python3 -m venv "$APP_DIR/venv"
-fi
-"$APP_DIR/venv/bin/pip" install --quiet --upgrade pip
-# Editable: console scripts resolve against the checkout. Re-running the install
-# is what picks up NEW entry points and NEW dependencies.
-"$APP_DIR/venv/bin/pip" install --quiet -e "$APP_DIR[dashboard]"
-
 log "State tree"
 for sub in "${STATE_DIRS[@]}"; do
     mkdir -p "$STATE_DIR/$sub"
 done
-# Own the tree as the service user and leave it world-readable. Readable matters:
-# live_state and reports are a published surface that other local readers must
-# be able to open. Do not chown this tree to another user — the units declare
-# StateDirectory=iron-spyder, and systemd resets ownership on start.
 chown -R "$SVC_USER:$SVC_USER" "$STATE_DIR"
 chmod 0755 "$STATE_DIR"
 find "$STATE_DIR" -type d -exec chmod 0755 {} +
 find "$STATE_DIR/reports" -type f -name '*.json' -exec chmod 0644 {} + 2>/dev/null || true
 [ -f "$STATE_DIR/live_state.json" ] && chmod 0644 "$STATE_DIR/live_state.json"
 
-# Publish what is deployed so the dashboard can answer "did my change land?"
 cat > "$STATE_DIR/deploy.json" <<JSON
 {
   "commit": "$(git -C "$APP_DIR" rev-parse HEAD)",
@@ -97,7 +87,9 @@ cat > "$STATE_DIR/deploy.json" <<JSON
   "ref": "$TARGET",
   "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "app_dir": "$APP_DIR",
-  "repo_url": "$REPO_URL"
+  "repo_url": "$REPO_URL",
+  "compute": "cpu",
+  "runtime": "docker-compose"
 }
 JSON
 chown "$SVC_USER:$SVC_USER" "$STATE_DIR/deploy.json"
@@ -110,16 +102,15 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 log "Systemd units"
-for unit in "${SERVICES[@]}"; do
-    install -m 644 "$APP_DIR/deploy/${unit}.service" "/etc/systemd/system/${unit}.service"
-done
-for unit in "${TIMERS[@]}"; do
-    install -m 644 "$APP_DIR/deploy/${unit}.service" "/etc/systemd/system/${unit}.service"
-    install -m 644 "$APP_DIR/deploy/${unit}.timer" "/etc/systemd/system/${unit}.timer"
+install -m 644 "$APP_DIR/deploy/iron-spyder.service" /etc/systemd/system/iron-spyder.service
+install -m 644 "$APP_DIR/deploy/iron-spyder-update.service" /etc/systemd/system/iron-spyder-update.service
+install -m 644 "$APP_DIR/deploy/iron-spyder-update.timer" /etc/systemd/system/iron-spyder-update.timer
+# Remove legacy per-process units if a prior deploy installed them.
+for legacy in iron-spyder-supervisor iron-spyder-dashboard-api; do
+    systemctl disable --now "$legacy" 2>/dev/null || true
+    rm -f "/etc/systemd/system/${legacy}.service"
 done
 systemctl daemon-reload
-
-# Always enable the self-update timer so the first deploy is not also the last.
 systemctl enable --now iron-spyder-update.timer
 
 if [ ! -f "$ENV_FILE" ]; then
@@ -133,17 +124,22 @@ self-update timer):
        $APP_DIR/deploy/iron-spyder.env.example $ENV_FILE
   sudo nano $ENV_FILE
 
-Units were installed but not started. The next self-update will start them
-once the secrets file exists.
+This host is the dedicated Iron-Spyder CPU VPS (see deploy/CPU_VPS.md).
+Do not install NVIDIA drivers or co-tenant SPY-DER / 0DTE here.
 EOF
     exit 0
 fi
 
-log "Restart runtime services"
-for unit in "${SERVICES[@]}"; do
-    systemctl enable --now "$unit"
-    systemctl restart "$unit"
-done
+# Compose reads $APP_DIR/.env; keep it in sync with the secrets file without
+# ever inventing secrets from the example template.
+install -m 640 -o root -g root "$ENV_FILE" "$COMPOSE_ENV"
 
-log "Deploy complete"
-systemctl --no-pager --full status "${SERVICES[@]}" || true
+log "Build and start CPU-only Compose stack"
+cd "$APP_DIR"
+docker compose -f "$APP_DIR/docker-compose.yml" pull || true
+docker compose -f "$APP_DIR/docker-compose.yml" build
+systemctl enable iron-spyder
+systemctl restart iron-spyder
+
+log "Deploy complete (compute=cpu, runtime=docker-compose)"
+docker compose -f "$APP_DIR/docker-compose.yml" ps || true

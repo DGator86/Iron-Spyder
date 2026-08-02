@@ -1,13 +1,11 @@
-"""Iron-Spyder's VPS deploy has no runtime dependency on legacy trees.
+"""Iron-Spyder deploy is a dedicated CPU VPS — no legacy trees, no GPU.
 
-Scans shipped units, env/config templates, and the VPS package, and fails on
-any 0DTE/legacy path or unit name. Also asserts the VPS service set is
-complete and that every ExecStart names a real CLI command.
+Scans shipped units, compose files, env/config templates, and the VPS package.
+Fails on 0DTE/SPY-DER path leakage, GPU/CUDA wiring, or incomplete service set.
 """
 
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
 import pytest
@@ -25,9 +23,20 @@ FORBIDDEN_PATHS = (
     "/etc/spy-der",
 )
 
+GPU_MARKERS = (
+    "nvidia/",
+    "nvidia.com",
+    "runtime: nvidia",
+    "deploy.resources.reservations.devices",
+    "capabilities: [gpu]",
+    "cuda:",
+    "pytorch/pytorch",
+    "tensorflow/tensorflow",
+    "FROM nvidia",
+)
+
 REQUIRED_UNITS = (
-    "iron-spyder-supervisor.service",
-    "iron-spyder-dashboard-api.service",
+    "iron-spyder.service",
     "iron-spyder-update.service",
     "iron-spyder-update.timer",
 )
@@ -41,11 +50,17 @@ REQUIRED_STATE_DIRS = (
     "configs",
 )
 
-_SPYDER_VPS_BIN = "/opt/iron-spyder/venv/bin/spyder-vps"
-
 
 def _deploy_files() -> list[Path]:
     return sorted(p for p in _DEPLOY.iterdir() if p.is_file())
+
+
+def _compose_files() -> list[Path]:
+    return [
+        _ROOT / "docker-compose.yml",
+        _ROOT / "docker-compose.research.yml",
+        _ROOT / "Dockerfile",
+    ]
 
 
 def test_no_deploy_file_references_a_legacy_path() -> None:
@@ -88,40 +103,17 @@ def test_required_unit_is_shipped(unit: str) -> None:
     assert (_DEPLOY / unit).is_file(), f"missing {unit}"
 
 
+def test_live_unit_is_docker_compose() -> None:
+    text = (_DEPLOY / "iron-spyder.service").read_text(encoding="utf-8")
+    assert "docker compose" in text
+    assert "docker-compose.yml" in text
+    assert "User=spy-der" not in text
+    assert "/opt/spy-der" not in text
+
+
 def test_update_timer_has_matching_service() -> None:
     assert (_DEPLOY / "iron-spyder-update.service").is_file()
     assert (_DEPLOY / "iron-spyder-update.timer").is_file()
-
-
-@pytest.mark.parametrize(
-    "unit",
-    [u for u in REQUIRED_UNITS if u.endswith(".service") and u != "iron-spyder-update.service"],
-)
-def test_runtime_services_run_as_iron_spyder_user(unit: str) -> None:
-    text = (_DEPLOY / unit).read_text(encoding="utf-8")
-    assert "User=iron-spyder" in text, unit
-    assert "Group=iron-spyder" in text, unit
-    assert "NoNewPrivileges=true" in text, unit
-    assert "StateDirectory=iron-spyder" in text, unit
-    assert "IRON_SPYDER_STATE_ROOT=%S/iron-spyder" in text, unit
-
-
-def test_dashboard_api_binds_loopback_only() -> None:
-    text = (_DEPLOY / "iron-spyder-dashboard-api.service").read_text(encoding="utf-8")
-    assert "--host 127.0.0.1" in text
-    assert "0.0.0.0" not in text
-    assert "ReadOnlyPaths=/var/lib/iron-spyder" in text
-
-
-def test_dashboard_api_cannot_mutate_state_root() -> None:
-    text = (_DEPLOY / "iron-spyder-dashboard-api.service").read_text(encoding="utf-8")
-    writable = {
-        path
-        for line in text.splitlines()
-        if line.strip().startswith("ReadWritePaths=")
-        for path in line.strip().split("=", 1)[1].split()
-    }
-    assert "/var/lib/iron-spyder" not in writable
 
 
 def test_no_unit_enables_live_trading() -> None:
@@ -131,81 +123,53 @@ def test_no_unit_enables_live_trading() -> None:
         assert "--mode live" not in text, path.name
 
 
-def _cli_commands() -> set[str]:
-    source = (_VPS / "cli.py").read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(_VPS / "cli.py"))
-    commands: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Compare):
-            continue
-        if not any(isinstance(op, ast.In) for op in node.ops):
-            continue
-        if not (isinstance(node.left, ast.Name) and node.left.id == "cmd"):
-            continue
-        for comparator in node.comparators:
-            if isinstance(comparator, ast.Set):
-                for element in comparator.elts:
-                    if isinstance(element, ast.Constant) and isinstance(element.value, str):
-                        commands.add(element.value)
-    return commands
+def test_compose_and_dockerfile_are_cpu_only() -> None:
+    offenders: list[str] = []
+    for path in _compose_files():
+        text = path.read_text(encoding="utf-8").lower()
+        for marker in GPU_MARKERS:
+            if marker.lower() in text:
+                offenders.append(f"{path.name}: {marker}")
+    assert not offenders, offenders
 
 
-def _exec_start_tokens(text: str) -> list[str]:
-    joined = text.replace("\\\n", " ")
-    for line in joined.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("ExecStart="):
-            return stripped.removeprefix("ExecStart=").split()
-    return []
+def test_compose_live_stack_binds_loopback_only() -> None:
+    text = (_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "127.0.0.1:8000:8000" in text
+    assert "127.0.0.1:8501:8501" in text
+    assert "127.0.0.1:8788:8788" in text
+    assert "0.0.0.0:8000" not in text
+    assert "iron-spyder:cpu" in text
+    assert "NVIDIA_VISIBLE_DEVICES: void" in text
 
 
-def _exec_start_subcommand(text: str) -> str | None:
-    tokens = _exec_start_tokens(text)
-    if not tokens or tokens[0] != _SPYDER_VPS_BIN:
-        return None
-    for token in tokens[1:]:
-        if not token.startswith("-"):
-            return token
-    return None
+def test_research_compose_is_separate_and_cpu_only() -> None:
+    text = (_ROOT / "docker-compose.research.yml").read_text(encoding="utf-8")
+    assert "iron-spyder-research" in text
+    assert "IRON_SPYDER_MODE: research" in text
+    assert "NVIDIA_VISIBLE_DEVICES: void" in text
+    assert "ports:" not in text
 
 
-def _units_invoking_the_cli() -> list[str]:
-    return sorted(
-        p.name
-        for p in _DEPLOY.glob("*.service")
-        if _exec_start_tokens(p.read_text(encoding="utf-8"))[:1] == [_SPYDER_VPS_BIN]
-    )
+def test_dockerfile_disables_cuda_visibility() -> None:
+    text = (_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert 'CUDA_VISIBLE_DEVICES=""' in text
+    assert "NVIDIA_VISIBLE_DEVICES=void" in text
+    assert "python:3.12" in text
+    assert "FROM python:" in text
+    assert "FROM nvidia" not in text.lower()
 
 
-@pytest.mark.parametrize("unit", _units_invoking_the_cli())
-def test_every_shipped_unit_invokes_a_real_cli_command(unit: str) -> None:
-    path = _DEPLOY / unit
-    subcommand = _exec_start_subcommand(path.read_text(encoding="utf-8"))
-    assert subcommand, f"{unit} has no parseable ExecStart subcommand"
-    assert subcommand in _cli_commands(), (
-        f"{unit} runs `spyder-vps {subcommand}`, which spy_der.vps.cli.main "
-        f"does not dispatch"
-    )
-
-
-def test_every_runtime_unit_is_audited_by_the_cli_check() -> None:
-    audited = set(_units_invoking_the_cli())
-    everything = {p.name for p in _DEPLOY.glob("*.service")}
-    assert everything - audited == {"iron-spyder-update.service"}
-
-
-def test_units_that_run_a_script_ship_that_script() -> None:
-    text = (_DEPLOY / "iron-spyder-update.service").read_text(encoding="utf-8")
-    tokens = _exec_start_tokens(text)
-    scripts = [t for t in tokens if t.endswith(".sh")]
-    assert scripts
-    for script in scripts:
-        name = Path(script).name
-        assert (_DEPLOY / name).is_file(), f"update unit runs {script}, not shipped"
+def test_cpu_vps_guidance_is_shipped() -> None:
+    text = (_DEPLOY / "CPU_VPS.md").read_text(encoding="utf-8")
+    assert "8" in text and "32 GB" in text
+    assert "no GPU" in text.lower() or "Do not pay for a GPU" in text
+    assert "Docker Compose" in text
+    assert "second CPU" in text or "Research worker" in text
 
 
 def test_deploy_scripts_are_shipped_and_executable() -> None:
-    for name in ("remote-deploy.sh", "self-update.sh"):
+    for name in ("remote-deploy.sh", "self-update.sh", "backup.sh"):
         path = _DEPLOY / name
         assert path.is_file(), name
         assert path.stat().st_mode & 0o111, f"{name} is not executable"
@@ -222,10 +186,11 @@ def test_remote_deploy_installs_every_required_unit() -> None:
         assert stem in text, f"{unit} is never installed by remote-deploy.sh"
 
 
-def test_remote_deploy_installs_the_package_into_the_venv() -> None:
+def test_remote_deploy_uses_docker_compose() -> None:
     text = _remote_deploy()
-    assert "pip" in text and "install" in text
-    assert "venv/bin/pip" in text
+    assert "docker compose" in text
+    assert "docker-compose.yml" in text
+    assert "no NVIDIA/CUDA" in text or "CPU" in text
 
 
 def test_remote_deploy_creates_every_declared_state_directory() -> None:
@@ -236,7 +201,7 @@ def test_remote_deploy_creates_every_declared_state_directory() -> None:
 
 def test_remote_deploy_owns_state_as_the_service_user() -> None:
     text = _remote_deploy()
-    assert 'SVC_USER=iron-spyder' in text
+    assert "SVC_USER=iron-spyder" in text
     assert 'chown -R "$SVC_USER:$SVC_USER" "$STATE_DIR"' in text
 
 
@@ -251,13 +216,20 @@ def test_remote_deploy_does_not_write_the_secrets_file() -> None:
         stripped = line.strip()
         if stripped.startswith("#"):
             continue
-        if "ENV_FILE" in stripped and ("install " in stripped or "cp " in stripped):
+        # Copying ENV_FILE -> compose .env is fine; writing ENV_FILE from example is not.
+        writes_secrets = (
+            "ENV_FILE" in stripped
+            and ("install " in stripped or "cp " in stripped)
+            and "iron-spyder.env.example" in stripped
+            and stripped.rstrip().endswith("$ENV_FILE")
+        )
+        if writes_secrets:
             raise AssertionError(f"deploy writes the secrets file: {stripped}")
 
 
 def test_self_update_runs_the_fetched_deploy_script_not_the_stale_one() -> None:
     text = (_DEPLOY / "self-update.sh").read_text(encoding="utf-8")
-    assert "git -C \"$APP_DIR\" show" in text
+    assert 'git -C "$APP_DIR" show' in text
     assert "deploy/remote-deploy.sh" in text
 
 
@@ -298,6 +270,7 @@ def test_env_template_defaults_to_paper_with_live_disabled() -> None:
     text = (_DEPLOY / "iron-spyder.env.example").read_text(encoding="utf-8")
     assert "IRON_SPYDER_MODE=paper" in text
     assert "IRON_SPYDER_ALLOW_LIVE=0" in text
+    assert "NVIDIA_VISIBLE_DEVICES=void" in text
 
 
 def test_config_template_declares_every_state_directory() -> None:
@@ -309,3 +282,9 @@ def test_config_template_declares_every_state_directory() -> None:
 def test_pyproject_exposes_spyder_vps_console_script() -> None:
     text = (_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'spyder-vps = "spy_der.vps.cli:main"' in text
+
+
+def test_compose_env_example_is_shipped() -> None:
+    text = (_ROOT / ".env.example").read_text(encoding="utf-8")
+    assert "IRON_SPYDER_MODE=paper" in text
+    assert "IRON_SPYDER_ALLOW_LIVE=0" in text

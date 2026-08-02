@@ -1,0 +1,43 @@
+# Iron-Spyder research worker — separate CPU machine, never the live VPS.
+#
+# Use on-demand / interruptible CPU compute (16–32 cores, 64–128 GB RAM,
+# 1–2 TB NVMe). Do not run giant walk-forward or Monte Carlo jobs on the
+# live trading host.
+#
+#   docker compose -f docker-compose.research.yml run --rm research \
+#       python -m scripts.backtest
+#
+# No GPU. When deep models eventually need CUDA, train on a temporary GPU
+# box, export artifacts, and keep inference on CPU.
+
+name: iron-spyder-research
+
+services:
+  research:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: iron-spyder:cpu
+    container_name: iron-spyder-research
+    working_dir: /app
+    environment:
+      IRON_SPYDER_STATE_ROOT: /var/lib/iron-spyder
+      IRON_SPYDER_MODE: research
+      CUDA_VISIBLE_DEVICES: ""
+      NVIDIA_VISIBLE_DEVICES: void
+      OMP_NUM_THREADS: ${IRON_SPYDER_RESEARCH_THREADS:-16}
+      MKL_NUM_THREADS: ${IRON_SPYDER_RESEARCH_THREADS:-16}
+      OPENBLAS_NUM_THREADS: ${IRON_SPYDER_RESEARCH_THREADS:-16}
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ${IRON_SPYDER_RESEARCH_DATA:-./data}:/data:ro
+      - ${IRON_SPYDER_RESEARCH_OUT:-./var/research}:/var/lib/iron-spyder
+    # Soft guidance for the research box; Compose ignores these without Swarm,
+    # but they document the intended footprint.
+    cpus: ${IRON_SPYDER_RESEARCH_CPUS:-8.0}
+    mem_limit: ${IRON_SPYDER_RESEARCH_MEM:-32g}
+    # No ports published. No live broker. No GPU devices.
+    profiles: []
+    command: ["python", "-m", "scripts.backtest"]
