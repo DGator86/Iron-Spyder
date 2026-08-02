@@ -64,6 +64,7 @@ spy_der/
 ├── execution/     orders, fill model, paper broker, reconciliation, position management
 ├── backtest/      point-in-time replay, walk-forward, purging, cost stress
 ├── monitoring/    drift, calibration, and execution health
+├── runtime/       market calendar, durable state, unattended supervisor
 ├── app/           FastAPI surface and Streamlit dashboard
 └── pipeline.py    the end-to-end decision cycle
 ```
@@ -109,10 +110,87 @@ regimes, where simulated realized volatility exceeds the implied level.
 
 ---
 
+## Running unattended
+
+```bash
+python -m scripts.run --state var/state.db --audit var/audit.db
+```
+
+The supervisor owns the clock and the failure handling, so nothing needs a
+babysitter:
+
+- **Sessions come from a computed NYSE calendar** (`runtime/calendar.py`) rather
+  than a table that expires. Holidays are derived from their weekday rules,
+  Good Friday from the Meeus/Jones/Butcher Easter algorithm, and the three early
+  closes from their own conditions. Half days matter operationally: a runner
+  that thinks 27 November closes at 16:00 holds positions three hours past the
+  bell. Outside a session the loop sleeps until the next open instead of
+  spinning.
+- **Crashes are contained, not fatal.** A failing cycle is logged and retried
+  with geometric backoff; consecutive failures past the configured ceiling trip
+  a kill switch rather than continuing to trade blind.
+- **State is durable** (`runtime/state_store.py`). Kill switches, open
+  positions, and the daily loss and consecutive-loss counters are written to
+  SQLite as explicit JSON — not pickle — and restored on start. This is a safety
+  property, not a convenience one: without it a restart clears a latched kill
+  switch, and "just restart it" becomes the way to bypass a lockout. If a stored
+  position cannot be rebuilt, the `BROKER_STATE` switch trips instead of the
+  daemon starting with a book it does not know about.
+- **Session end forces closure** of anything still open, well before the
+  assignment cutoff — the spec never relies on assignment. Positions that cannot
+  be priced to close escalate to a kill switch rather than being left silently
+  open.
+- **Shutdown is graceful but does not liquidate.** `SIGTERM` finishes the
+  current cycle, persists state, and exits with the book intact. Dumping
+  positions into whatever liquidity exists at shutdown is the worse failure.
+
+---
+
+## Historical data
+
+The loader turns recorded chains into the same `MarketSnapshot` objects the live
+path consumes, so replaying history is just a provider swap.
+
+```bash
+python -m scripts.ingest inspect --path /data/spy --pattern 'SPY_*.csv'
+python -m scripts.ingest load    --path /data/spy --bars /data/spy/SPY_bars.csv
+```
+
+Run `inspect` first. Column naming is not standardized across vendors, so
+`historical.COLUMN_ALIASES` maps a wide set of spellings onto a canonical schema
+and `inspect` reports exactly which canonical fields resolved, which are
+missing, and which source columns went unused — a mismatch produces a named
+error rather than silently-zero open interest. Add unrecognized spellings to
+that table rather than reshaping the data upstream.
+
+CSV, gzipped CSV, and Parquet are read; reading is streaming and grouped by
+timestamp, so a year of one-minute chains costs one chain of memory rather than
+the whole history.
+
+Two decisions are worth knowing about:
+
+- **Implied volatility is optional on input.** When absent it is solved from the
+  midpoint with the same model the analytics layer uses, which keeps the surface
+  self-consistent instead of mixing a vendor's IV convention with ours. Chains
+  that ship the underlying separately are handled: the bar close resolves the
+  spot before the solve, so contracts are not all dropped for want of a price.
+- **Quotes with no establishable IV are dropped, not zeroed.** Writing
+  `implied_volatility=0.0` asserts that volatility *is* zero when the truth is
+  that it is unknown; such a contract prices at intrinsic with zero gamma and
+  zero vega and would quietly dilute every exposure aggregate it entered. The
+  count is reported, and the data-quality engine independently notices if enough
+  contracts go missing to thin the chain.
+
+Timestamps: naive values are treated as UTC by default. Pass `--local-time` if
+the source is wall-clock Eastern. The choice is not cosmetic — it shifts every
+time to expiry.
+
+---
+
 ## Testing
 
 ```bash
-pytest -q        # 320 tests
+pytest -q        # 441 tests
 ruff check .
 mypy spy_der
 ```
@@ -132,6 +210,13 @@ The suite implements the spec's testing program:
   and event lockout.
 - **Backtest** — point-in-time replay, walk-forward folds, purging and embargo,
   the full cost-stress grid, parameter-stability plateau detection.
+- **Runtime** — the calendar against the published NYSE schedule (holidays,
+  observation rules, early closes, DST), state surviving a simulated crash with
+  a latched kill switch intact, backoff and failure escalation, session-end
+  flattening.
+- **Ingestion** — vendor column aliasing, IV solved back to the volatility that
+  generated the prices, unpriceable quotes dropped rather than zeroed, and the
+  point-in-time guarantee that no bar stamped after a snapshot reaches it.
 - **Integration** — the whole pipeline, kill switches, and the audit trail.
 
 Closed-form barrier and quantile results in `models/baselines/analytic.py` are
@@ -160,10 +245,14 @@ Stated plainly, because they bound what the current numbers mean:
    the state engine separates the regimes the generator encodes. The spec
    requires walk-forward validation on real data before those weights carry any
    authority, and that has not been done.
-2. **No historical SPY data ships.** All results are from the synthetic
-   generator. Because it prices from the same model the simulator samples, it is
-   arbitrage-free by construction and cannot demonstrate edge — only that the
-   machinery is correct and that the system abstains when there is nothing there.
+2. **No historical SPY data ships.** The loader exists and is tested, but every
+   number in this README is from the synthetic generator. Because it prices from
+   the same model the simulator samples, it is arbitrage-free by construction
+   and cannot demonstrate edge — only that the machinery is correct and that the
+   system abstains when there is nothing there. The alias table in
+   `historical.COLUMN_ALIASES` covers the common vendor spellings but has not
+   been run against a real vendor extract; `inspect` is the first thing to run
+   on one.
 3. **The learned baselines are unfitted.** They fall back to the analytic GBM
    priors, which are calibrated by construction but carry no learned signal.
    Nonlinear specialists are not implemented; the ensemble is wired for them and

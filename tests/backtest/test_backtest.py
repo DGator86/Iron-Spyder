@@ -25,8 +25,6 @@ from spy_der.models.forecast_engine import ForecastEngine, ForecastEngineConfig
 from spy_der.optimizer.engine import OptimizerConfig, StrategyOptimizer
 from spy_der.pipeline import DecisionPipeline, PipelineConfig
 
-UTC = UTC
-
 
 def build_pipeline(costs: CostModel | None = None) -> DecisionPipeline:
     model = costs or CostModel()
