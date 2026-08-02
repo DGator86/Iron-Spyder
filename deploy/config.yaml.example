@@ -1,0 +1,27 @@
+# Iron-Spyder configuration — install to /etc/iron-spyder/config.yaml.
+#
+# Non-secret runtime configuration only. Credentials belong in
+# /etc/iron-spyder/iron-spyder.env.
+
+schema_version: iron_spyder.config.v1
+
+state:
+  root: /var/lib/iron-spyder
+  directories:
+    - health        # per-service heartbeats
+    - decisions     # decision artifacts
+    - positions     # position snapshots
+    - audit         # audit SQLite
+    - reports       # operator-facing reports
+    - configs       # non-secret knobs
+
+supervisor:
+  # Decision cadence inside a session, in minutes.
+  interval_minutes: 5
+  # Flatten before the bell.
+  close_positions_at_session_end: true
+  max_consecutive_failures: 5
+
+dashboard_api:
+  host: 127.0.0.1
+  port: 8788

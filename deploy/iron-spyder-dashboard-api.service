@@ -1,0 +1,34 @@
+[Unit]
+# Dashboard data service. Binds loopback only: a tunnel or reverse proxy reaches
+# it, so the API is never directly internet-facing.
+Description=Iron-Spyder VPS dashboard API (read-only status + live state)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=iron-spyder
+Group=iron-spyder
+WorkingDirectory=/opt/iron-spyder
+EnvironmentFile=-/etc/iron-spyder/iron-spyder.env
+StateDirectory=iron-spyder
+Environment=IRON_SPYDER_STATE_ROOT=%S/iron-spyder
+ExecStart=/opt/iron-spyder/venv/bin/spyder-vps dashboard-api \
+    --host 127.0.0.1 \
+    --port 8788 \
+    --state-root %S/iron-spyder
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/var/lib/iron-spyder
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=iron-spyder-dashboard-api
+
+[Install]
+WantedBy=multi-user.target

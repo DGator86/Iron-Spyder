@@ -65,9 +65,14 @@ spy_der/
 ├── backtest/      point-in-time replay, walk-forward, purging, cost stress
 ├── monitoring/    drift, calibration, and execution health
 ├── runtime/       market calendar, durable state, unattended supervisor
+├── vps/           VPS module: state root, heartbeats, live_state, status API, deploy CLI
 ├── app/           FastAPI surface and Streamlit dashboard
 └── pipeline.py    the end-to-end decision cycle
 ```
+
+The VPS surface is its own module. `spy_der.runtime` owns the decision loop;
+`spy_der.vps` owns the file layout, liveness publishing, read-only status API,
+and the pull-based deploy units under `deploy/`.
 
 The backtest drives the *same* `DecisionPipeline` as the live path. There is no
 parallel backtest logic that could drift from production behaviour, and the
@@ -115,6 +120,28 @@ regimes, where simulated realized volatility exceeds the implied level.
 ```bash
 python -m scripts.run --mode paper --interval 5 --state var/state.db
 ```
+
+### VPS module
+
+On a VPS the same supervisor publishes heartbeats and `live_state.json` under a
+dedicated state root, and a loopback status API serves them without SSH:
+
+```bash
+spyder-vps supervisor --state-root /var/lib/iron-spyder --mode paper --interval 5
+spyder-vps dashboard-api --host 127.0.0.1 --port 8788 --state-root /var/lib/iron-spyder
+spyder-vps status --state-root /var/lib/iron-spyder
+```
+
+First-time box install (as root):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DGator86/Iron-Spyder/main/deploy/remote-deploy.sh | bash
+```
+
+That provisions `/opt/iron-spyder`, `/var/lib/iron-spyder`, the systemd units
+(`iron-spyder-supervisor`, `iron-spyder-dashboard-api`, the self-update timer),
+and refuses to start runtime units until `/etc/iron-spyder/iron-spyder.env`
+exists. Subsequent pushes land via the pull-based update timer.
 
 The supervisor owns the clock and the failure handling, so nothing needs a
 babysitter:

@@ -1,0 +1,35 @@
+[Unit]
+# VPS supervisor: DecisionPipeline via the unattended Supervisor, publishing
+# heartbeats and live_state.json under the Iron-Spyder state root.
+Description=Iron-Spyder VPS supervisor (paper/shadow decision loop)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=iron-spyder
+Group=iron-spyder
+WorkingDirectory=/opt/iron-spyder
+EnvironmentFile=-/etc/iron-spyder/iron-spyder.env
+StateDirectory=iron-spyder
+Environment=IRON_SPYDER_STATE_ROOT=%S/iron-spyder
+ExecStart=/opt/iron-spyder/venv/bin/spyder-vps supervisor \
+    --state-root %S/iron-spyder \
+    --mode paper \
+    --interval 5
+Restart=always
+RestartSec=5
+
+# Live trading is forbidden by the package itself; this unit only runs paper/shadow.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/iron-spyder
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=iron-spyder-supervisor
+
+[Install]
+WantedBy=multi-user.target
