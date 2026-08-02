@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import TypeAlias
 
 import numpy as np
 from numpy.typing import NDArray
@@ -19,8 +20,13 @@ from sklearn.linear_model import LogisticRegression
 
 EPS = 1e-12
 
+#: Accepted input for the scoring functions. Spelled out because numpy 2.5's
+#: stubs no longer treat ``ndarray`` as structurally compatible with
+#: ``Sequence``, and every caller here passes arrays.
+FloatVector: TypeAlias = "Sequence[float] | NDArray[np.float64]"
 
-def brier_score(probabilities: Sequence[float], outcomes: Sequence[float]) -> float:
+
+def brier_score(probabilities: FloatVector, outcomes: FloatVector) -> float:
     """``BS = mean((p_i - y_i)^2)`` (spec 37.9)."""
     p = np.asarray(probabilities, dtype=np.float64)
     y = np.asarray(outcomes, dtype=np.float64)
@@ -29,7 +35,7 @@ def brier_score(probabilities: Sequence[float], outcomes: Sequence[float]) -> fl
     return float(np.mean((p - y) ** 2))
 
 
-def log_loss(probabilities: Sequence[float], outcomes: Sequence[float]) -> float:
+def log_loss(probabilities: FloatVector, outcomes: FloatVector) -> float:
     """``LL = -mean(y ln p + (1-y) ln(1-p))`` (spec 37.9)."""
     p = np.clip(np.asarray(probabilities, dtype=np.float64), EPS, 1.0 - EPS)
     y = np.asarray(outcomes, dtype=np.float64)
@@ -39,7 +45,7 @@ def log_loss(probabilities: Sequence[float], outcomes: Sequence[float]) -> float
 
 
 def expected_calibration_error(
-    probabilities: Sequence[float], outcomes: Sequence[float], *, bins: int = 10
+    probabilities: FloatVector, outcomes: FloatVector, *, bins: int = 10
 ) -> float:
     """Bin-weighted mean gap between predicted and realized frequency."""
     p = np.asarray(probabilities, dtype=np.float64)
@@ -59,7 +65,7 @@ def expected_calibration_error(
 
 
 def reliability_curve(
-    probabilities: Sequence[float], outcomes: Sequence[float], *, bins: int = 10
+    probabilities: FloatVector, outcomes: FloatVector, *, bins: int = 10
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.int_]]:
     """Return ``(mean_predicted, observed_frequency, counts)`` per bin."""
     p = np.asarray(probabilities, dtype=np.float64)
@@ -101,7 +107,7 @@ class ProbabilityCalibrator:
         return self._model is not None
 
     def fit(
-        self, probabilities: Sequence[float], outcomes: Sequence[float]
+        self, probabilities: FloatVector, outcomes: FloatVector
     ) -> ProbabilityCalibrator:
         p = np.asarray(probabilities, dtype=np.float64)
         y = np.asarray(outcomes, dtype=np.float64)
@@ -134,7 +140,7 @@ class ProbabilityCalibrator:
             )
         return float(np.clip(value, 0.0, 1.0))
 
-    def transform_many(self, probabilities: Sequence[float]) -> NDArray[np.float64]:
+    def transform_many(self, probabilities: FloatVector) -> NDArray[np.float64]:
         return np.array([self.transform(p) for p in probabilities], dtype=np.float64)
 
 
@@ -169,7 +175,7 @@ class CalibrationReport:
 
 
 def score_calibration(
-    label: str, probabilities: Sequence[float], outcomes: Sequence[float], *, bins: int = 10
+    label: str, probabilities: FloatVector, outcomes: FloatVector, *, bins: int = 10
 ) -> CalibrationReport:
     p = np.asarray(probabilities, dtype=np.float64)
     y = np.asarray(outcomes, dtype=np.float64)

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
+
+from spy_der.domain.market import FloatVector
 
 
 @dataclass(frozen=True)
@@ -56,8 +57,8 @@ class BacktestMetrics:
 
 def summarize(
     *,
-    pnl: Sequence[float],
-    equity_curve: Sequence[float],
+    pnl: FloatVector,
+    equity_curve: FloatVector,
     no_trade_rate: float,
     profile: str = "recorded",
 ) -> BacktestMetrics:
@@ -85,7 +86,7 @@ def summarize(
     )
 
 
-def max_drawdown(equity_curve: Sequence[float]) -> tuple[float, float]:
+def max_drawdown(equity_curve: FloatVector) -> tuple[float, float]:
     """Return ``(peak-to-trough dollars, fraction of peak)``."""
     values = np.asarray(list(equity_curve), dtype=np.float64)
     if values.size < 2:

@@ -21,7 +21,7 @@ import numpy as np
 from spy_der.backtest.metrics import BacktestMetrics, summarize
 from spy_der.domain.enums import ExitReason
 from spy_der.domain.execution import Position
-from spy_der.domain.market import MarketSnapshot
+from spy_der.domain.market import FloatVector, MarketSnapshot
 from spy_der.execution.fills import CostModel
 from spy_der.pipeline import DecisionPipeline, PipelineResult, force_close_all
 
@@ -204,7 +204,7 @@ def survives_stress(
 
 
 def compare_to_baselines(
-    system: BacktestResult, baselines: dict[str, Sequence[float]]
+    system: BacktestResult, baselines: dict[str, FloatVector]
 ) -> dict[str, dict[str, float]]:
     """Compare system expectancy against baseline strategies (spec 37.10)."""
     system_metrics = system.metrics()

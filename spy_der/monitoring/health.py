@@ -8,13 +8,13 @@ actions rather than a bare number.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 
 import numpy as np
 
 from spy_der.domain.enums import KillSwitchReason
+from spy_der.domain.market import FloatVector
 from spy_der.models.calibration.calibrator import expected_calibration_error
 
 
@@ -103,7 +103,7 @@ class SystemMonitor:
     thresholds: MonitorThresholds = field(default_factory=MonitorThresholds)
 
     def check_calibration(
-        self, probabilities: Sequence[float], outcomes: Sequence[float]
+        self, probabilities: FloatVector, outcomes: FloatVector
     ) -> HealthFinding:
         if len(probabilities) < 30:
             return HealthFinding(
@@ -124,7 +124,7 @@ class SystemMonitor:
             self.thresholds.max_calibration_error,
         )
 
-    def check_slippage(self, expected: Sequence[float], realized: Sequence[float]) -> HealthFinding:
+    def check_slippage(self, expected: FloatVector, realized: FloatVector) -> HealthFinding:
         total_expected = float(np.sum(expected))
         if total_expected <= 0.0 or not expected:
             return HealthFinding("slippage_drift", Response.NONE, "no samples", 1.0, 1.0)
@@ -154,7 +154,7 @@ class SystemMonitor:
             "fill_rate", response, f"fill rate {rate:.2f}", rate, self.thresholds.min_fill_rate
         )
 
-    def check_drawdown(self, equity_curve: Sequence[float]) -> HealthFinding:
+    def check_drawdown(self, equity_curve: FloatVector) -> HealthFinding:
         from spy_der.backtest.metrics import max_drawdown
 
         _, fraction = max_drawdown(equity_curve)
@@ -172,7 +172,7 @@ class SystemMonitor:
         )
 
     def check_feature_drift(
-        self, reference: Sequence[float], recent: Sequence[float]
+        self, reference: FloatVector, recent: FloatVector
     ) -> HealthFinding:
         """Standardized shift in a feature's mean between two periods."""
         ref = np.asarray(reference, dtype=np.float64)

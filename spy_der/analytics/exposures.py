@@ -19,7 +19,7 @@ from numpy.typing import NDArray
 
 from spy_der.analytics.chain import ChainArrays
 from spy_der.domain.enums import DealerSignConvention
-from spy_der.domain.market import OptionTrade
+from spy_der.domain.market import FloatVector, OptionTrade
 
 FloatArray: TypeAlias = NDArray[np.float64]
 
@@ -208,9 +208,11 @@ def compute_exposures(
             dex_by_strike=_aggregate_by_strike(arrays.strike, dex_values),
         )
 
-    signs = [float(np.sign(per_convention[c].gex)) for c in INFORMATIVE_CONVENTIONS]
-    positives = sum(1 for s in signs if s > 0)
-    negatives = sum(1 for s in signs if s < 0)
+    # Distinct from the per-contract `signs` array used inside the loop above:
+    # this is one sign per convention, for the agreement statistic.
+    gex_signs = [float(np.sign(per_convention[c].gex)) for c in INFORMATIVE_CONVENTIONS]
+    positives = sum(1 for s in gex_signs if s > 0)
+    negatives = sum(1 for s in gex_signs if s < 0)
     consensus = max(positives, negatives) / max(1, positives + negatives)
 
     return ExposureBundle(
@@ -224,7 +226,7 @@ def compute_exposures(
     )
 
 
-def dealer_agreement(values: Sequence[float], *, sign_consensus: float | None = None) -> float:
+def dealer_agreement(values: FloatVector, *, sign_consensus: float | None = None) -> float:
     """``1 - NormalizedDispersion(...)`` across conventions (spec 8.1).
 
     Combines two things a decision actually depends on: whether the conventions

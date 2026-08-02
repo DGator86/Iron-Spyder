@@ -7,10 +7,19 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from functools import cached_property
+from typing import TypeAlias
+
+import numpy as np
+from numpy.typing import NDArray
 
 from spy_der.domain.enums import ExerciseStyle, OptionRight, TradeDirection
 
 SECONDS_PER_YEAR = 365.0 * 24.0 * 3600.0
+
+#: A numeric vector accepted from either Python or NumPy. Spelled out because
+#: NumPy 2.5's stubs no longer treat ``ndarray`` as structurally compatible
+#: with ``Sequence``, so a bare ``Sequence[float]`` silently rejects arrays.
+FloatVector: TypeAlias = "Sequence[float] | NDArray[np.float64]"
 
 
 @dataclass(frozen=True, slots=True)
