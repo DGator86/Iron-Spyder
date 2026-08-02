@@ -14,7 +14,7 @@ parity tests, which do not use this generator.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 import numpy as np
 
@@ -30,6 +30,28 @@ from spy_der.domain.market import (
 )
 
 MARKET_CLOSE = time(20, 0)  # 16:00 America/New_York in UTC during EDT
+
+
+def _front_expiry_date(now: datetime) -> date:
+    """Calendar date of the nearest cash close still strictly after ``now``.
+
+    Synthetic scenarios include a 0DTE tenor. When the caller passes wall-clock
+    time after the 20:00 UTC close (or on a weekend evening), ``today + 0DTE``
+    would already be expired and trip a fatal data-quality lockout. Roll the
+    front month forward so demos and API integration tests stay usable outside
+    the cash session while preserving relative ``expiry_days`` spacing.
+    """
+    today_close = datetime.combine(now.date(), MARKET_CLOSE, tzinfo=now.tzinfo or UTC)
+    if now < today_close:
+        return now.date()
+    return now.date() + timedelta(days=1)
+
+
+def _expiration_for(now: datetime, days: float) -> datetime:
+    """Settlement timestamp ``days`` after the live front-month close."""
+    front = _front_expiry_date(now)
+    expiry_date = front + timedelta(days=int(days))
+    return datetime.combine(expiry_date, MARKET_CLOSE, tzinfo=now.tzinfo or UTC)
 
 
 @dataclass(frozen=True)
@@ -148,10 +170,8 @@ def build_snapshot(spec: ScenarioSpec, *, timestamp: datetime | None = None) -> 
 
     quotes: list[OptionQuote] = []
     for days in spec.expiry_days:
-        expiration = datetime.combine(
-            (now + timedelta(days=days)).date(), MARKET_CLOSE, tzinfo=UTC
-        )
-        tau = max(0.0, (expiration - now).total_seconds()) / (365.0 * 24.0 * 3600.0)
+        expiration = _expiration_for(now, days)
+        tau = max(1e-6, (expiration - now).total_seconds()) / (365.0 * 24.0 * 3600.0)
         span = spec.spot * spec.strike_width_pct
         lo = spec.strike_step * np.floor((spec.spot - span) / spec.strike_step)
         hi = spec.strike_step * np.ceil((spec.spot + span) / spec.strike_step)
