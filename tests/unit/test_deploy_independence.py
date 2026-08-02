@@ -141,6 +141,9 @@ def test_compose_live_stack_binds_loopback_only() -> None:
     assert "0.0.0.0:8000" not in text
     assert "iron-spyder:cpu" in text
     assert "NVIDIA_VISIBLE_DEVICES: void" in text
+    # Host state tree, not an anonymous named volume that hides deploy.json.
+    assert "${IRON_SPYDER_STATE_ROOT:-/var/lib/iron-spyder}:/var/lib/iron-spyder" in text
+    assert "iron-spyder-state:" not in text
 
 
 def test_research_compose_is_separate_and_cpu_only() -> None:
