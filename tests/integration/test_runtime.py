@@ -6,6 +6,9 @@ safety control.
 
 from __future__ import annotations
 
+import logging
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -273,7 +276,13 @@ class _ExplodingProvider(MarketDataProvider):
         return self.inner.session_timestamps(day)
 
 
-def build_supervisor(tmp_path, provider=None, **config):
+def build_supervisor(tmp_path, provider=None, *, real_sleep=False, **config):
+    """A supervisor wired to a synthetic provider.
+
+    ``real_sleep`` keeps the production wait, which is the only way to test that
+    a stop actually interrupts one; every other test stubs it out so the suite
+    does not spend wall-clock time sleeping.
+    """
     pipeline = build_pipeline()
     return Supervisor(
         pipeline=pipeline,
@@ -281,7 +290,7 @@ def build_supervisor(tmp_path, provider=None, **config):
         or SyntheticProvider(spec=scenario("broad_range"), step=timedelta(minutes=5)),
         state_store=RuntimeStateStore(tmp_path / "state.db"),
         config=SupervisorConfig(**config),
-        sleeper=lambda _seconds: None,  # never actually sleep in tests
+        sleeper=None if real_sleep else (lambda _seconds: None),
     )
 
 
@@ -387,6 +396,88 @@ def test_request_stop_ends_the_loop(tmp_path):
     supervisor.request_stop()
     stats = supervisor.run()
     assert stats.cycles == 0
+
+
+def test_a_stop_interrupts_a_closed_market_wait(tmp_path):
+    """SIGTERM during a weekend wait must be acted on now, not in five minutes.
+
+    A process supervisor escalates to SIGKILL on its own schedule — ``docker
+    stop`` after ten seconds, systemd after ninety — so a loop that finishes its
+    sleep before noticing the flag gets killed mid-flight instead of saving
+    state, which is the ungraceful exit the state store exists to survive.
+    """
+    supervisor = build_supervisor(
+        tmp_path, max_cycles=100, real_sleep=True, idle_poll=timedelta(seconds=30)
+    )
+    supervisor.clock = lambda: datetime(2026, 8, 1, 15, 0, tzinfo=UTC)  # Saturday
+
+    finished = threading.Event()
+
+    def drive():
+        supervisor.run()
+        finished.set()
+
+    worker = threading.Thread(target=drive, daemon=True)
+    started = time.monotonic()
+    worker.start()
+    time.sleep(0.2)  # let it reach the wait
+    supervisor.request_stop()
+
+    assert finished.wait(timeout=10.0), "run() did not return after request_stop()"
+    # An uninterruptible sleep would have taken the full 30s idle_poll.
+    assert time.monotonic() - started < 5.0
+
+
+def test_a_stop_interrupts_a_failure_backoff(tmp_path):
+    """The same guarantee on the error path, where backoff reaches ten minutes."""
+    inner = SyntheticProvider(spec=scenario("broad_range"), step=timedelta(minutes=5))
+    supervisor = build_supervisor(
+        tmp_path,
+        provider=_ExplodingProvider(inner, failures=100),
+        max_cycles=100,
+        real_sleep=True,
+        failure_backoff=timedelta(seconds=30),
+    )
+    supervisor.clock = lambda: datetime(2026, 8, 3, 15, 0, tzinfo=UTC)
+
+    finished = threading.Event()
+    worker = threading.Thread(target=lambda: (supervisor.run(), finished.set()), daemon=True)
+    started = time.monotonic()
+    worker.start()
+    time.sleep(0.2)
+    supervisor.request_stop()
+
+    assert finished.wait(timeout=10.0)
+    assert time.monotonic() - started < 5.0
+
+
+def test_the_closed_market_wait_is_announced_once_per_target(tmp_path, caplog):
+    """Silence over a weekend is indistinguishable from a hung process.
+
+    But repeating the line every idle poll buries anything that matters, so the
+    target is announced once and re-announced only when it changes.
+    """
+    polls = {"n": 0}
+
+    def poll(_seconds):
+        polls["n"] += 1
+        if polls["n"] >= 4:
+            supervisor.request_stop()
+
+    supervisor = build_supervisor(tmp_path, max_cycles=100, idle_poll=timedelta(minutes=5))
+    supervisor.clock = lambda: datetime(2026, 8, 1, 15, 0, tzinfo=UTC)  # Saturday
+    supervisor.sleeper = poll
+
+    with caplog.at_level(logging.INFO, logger="spy_der.supervisor"):
+        supervisor.run()
+
+    announcements = [
+        r for r in caplog.records if "waiting for the open" in r.getMessage()
+    ]
+    assert len(announcements) == 1
+    # Monday 2026-08-03 09:30 ET is 13:30 UTC.
+    assert "2026-08-03T13:30" in announcements[0].getMessage()
+    assert polls["n"] >= 4
 
 
 def test_shutdown_leaves_open_positions_in_place(tmp_path):
