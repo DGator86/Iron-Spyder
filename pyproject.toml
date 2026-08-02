@@ -61,7 +61,10 @@ ignore = [
 "tests/*" = ["E402"]
 
 [tool.mypy]
-python_version = "3.11"
+# Deliberately unpinned. The package supports 3.11+, but numpy's stubs use PEP
+# 695 `type` statements that only parse under 3.12, so pinning python_version
+# to 3.11 makes mypy reject numpy's own stub file on a 3.12 runner. Letting
+# mypy target the interpreter it runs under keeps the check working on both.
 ignore_missing_imports = true
 warn_unused_ignores = false
 disallow_untyped_defs = false
