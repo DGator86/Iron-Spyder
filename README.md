@@ -157,9 +157,16 @@ The loader turns recorded chains into the same `MarketSnapshot` objects the live
 path consumes, so replaying history is just a provider swap.
 
 ```bash
-python -m scripts.ingest inspect --path /data/spy --pattern 'SPY_*.csv'
-python -m scripts.ingest load    --path /data/spy --bars /data/spy/SPY_bars.csv
+python -m scripts.ingest inspect  --path /data/spy --pattern 'SPY_*.csv'
+python -m scripts.ingest load     --path /data/spy --bars /data/spy/SPY_bars.csv
+python -m scripts.ingest backtest --path /data/spy --bars /data/spy/SPY_bars.csv
 ```
+
+`inspect` reports the schema mapping, `load` reports what was ingested and its
+data quality, and `backtest` streams the result through the *same*
+`DecisionPipeline` the live path uses and prints the metrics — one command from
+recorded files to results, with no decision logic that differs between replay
+and production.
 
 Run `inspect` first. Column naming is not standardized across vendors, so
 `historical.COLUMN_ALIASES` maps a wide set of spellings onto a canonical schema
