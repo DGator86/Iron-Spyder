@@ -263,3 +263,35 @@ def test_state_paths_honours_env(monkeypatch, tmp_path):
 
     monkeypatch.setattr(paths_mod, "DEFAULT_STATE_ROOT", str(tmp_path / "from-env"))
     assert state_paths().root == tmp_path / "from-env"
+
+
+def test_ensure_state_tree_refuses_an_unwritable_root(tmp_path, monkeypatch):
+    """A bind-mount uid mismatch must stop the daemon, not be logged per cycle.
+
+    The supervisor survives a failed live_state write by design, so an
+    unwritable state tree let it keep trading while the dashboard served
+    whatever it had last read — healthy-looking and hours stale.
+    """
+    import pathlib
+
+    from spy_der.vps.paths import StateTreeNotWritable, ensure_state_tree
+
+    def deny(self, *args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(pathlib.Path, "touch", deny)
+    with pytest.raises(StateTreeNotWritable, match="not writable by uid"):
+        ensure_state_tree(tmp_path / "state")
+
+
+def test_ensure_state_tree_names_the_fix(tmp_path, monkeypatch):
+    import pathlib
+
+    from spy_der.vps.paths import StateTreeNotWritable, ensure_state_tree
+
+    monkeypatch.setattr(
+        pathlib.Path, "touch", lambda self, *a, **k: (_ for _ in ()).throw(PermissionError(13, "denied"))
+    )
+    with pytest.raises(StateTreeNotWritable) as exc:
+        ensure_state_tree(tmp_path / "state")
+    assert "chown -R 10001:10001" in str(exc.value)
