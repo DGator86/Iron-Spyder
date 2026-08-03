@@ -147,7 +147,40 @@ services:
     networks:
       - iron_spyder_net
 
+  # Public read-only edge. OPT-IN: this is the only service that publishes to a
+  # public interface, so it starts only under `--profile public`. A plain
+  # `docker compose up` leaves the stack loopback-only, which is the default the
+  # rest of this file was built around.
+  #
+  #   docker compose --profile public up -d proxy
+  #
+  proxy:
+    image: caddy:2-alpine
+    container_name: iron-spyder-proxy
+    restart: unless-stopped
+    profiles: ["public"]
+    depends_on:
+      - api
+    environment:
+      SPYDER_PUBLIC_DOMAIN: ${SPYDER_PUBLIC_DOMAIN:?set SPYDER_PUBLIC_DOMAIN (a DNS name pointed at this host) to expose the read-only API}
+      SPYDER_API_TOKEN: ${SPYDER_API_TOKEN:?set SPYDER_API_TOKEN to a long random secret; the proxy refuses every request without it}
+    ports:
+      # 80 is required for the ACME HTTP challenge; Caddy redirects it to 443.
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging: *default-logging
+    networks:
+      - iron_spyder_net
+
 networks:
   iron_spyder_net:
     name: iron-spyder-net
     driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

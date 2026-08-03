@@ -1,0 +1,48 @@
+# Public read-only edge for the Iron-Spyder engine.
+#
+# The engine binds 127.0.0.1 and must stay that way: it exposes
+# POST /risk/kill-switch, /paper/orders, /paper/close, /models/reload and
+# /scenario. Anyone who can reach those can disarm the risk engine or push
+# orders into the paper book. This file exists so a hosted dashboard can read
+# the engine without any of that becoming reachable.
+#
+# The rule is an allowlist, not a filter. A new engine endpoint is unreachable
+# from the internet until someone adds it here on purpose — the failure
+# direction is "the dashboard is missing a panel", never "a mutation leaked".
+
+{$SPYDER_PUBLIC_DOMAIN} {
+	encode gzip
+
+	# GET, and only the paths the radar actually reads. Wildcards are scoped to
+	# analytics/forecast, both of which are read-only families in the FastAPI app.
+	@readonly {
+		method GET
+		path /health /market/current /analytics/* /forecast/* /positions /performance
+	}
+
+	@authorized header Authorization "Bearer {$SPYDER_API_TOKEN}"
+
+	handle @readonly {
+		handle @authorized {
+			reverse_proxy api:8000 {
+				header_up X-Forwarded-Proto {scheme}
+			}
+		}
+		# Path and method are fine but the token is not — say so plainly. This
+		# distinction is deliberate: it only leaks that a read endpoint exists,
+		# which the frontend source already reveals, and it turns "the dashboard
+		# went synthetic" into a one-glance diagnosis.
+		respond "unauthorized" 401
+	}
+
+	# Everything else. Every POST lands here, including a request that carries a
+	# valid token — the token grants reading, and nothing else.
+	handle {
+		respond "not exposed" 404
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
