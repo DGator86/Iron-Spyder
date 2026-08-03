@@ -315,3 +315,65 @@ def test_compose_env_example_is_shipped() -> None:
     text = (_ROOT / ".env.example").read_text(encoding="utf-8")
     assert "IRON_SPYDER_MODE=paper" in text
     assert "IRON_SPYDER_ALLOW_LIVE=0" in text
+
+
+# --- public edge -----------------------------------------------------------
+
+
+def _caddyfile() -> str:
+    return (_DEPLOY / "caddy" / "Caddyfile").read_text(encoding="utf-8")
+
+
+def test_public_proxy_is_opt_in() -> None:
+    """A plain `docker compose up` must not publish anything to the internet."""
+    compose = (_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert 'profiles: ["public"]' in compose, "the proxy must sit behind a compose profile"
+    # The engine itself stays loopback regardless of the proxy.
+    assert "127.0.0.1:8000:8000" in compose
+    assert "0.0.0.0:8000" not in compose
+
+
+def test_public_proxy_requires_a_token_and_a_domain() -> None:
+    compose = (_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    # `:?` makes compose refuse to start rather than default to something open.
+    assert "SPYDER_PUBLIC_DOMAIN:?" in compose
+    assert "SPYDER_API_TOKEN:?" in compose
+
+
+def test_public_proxy_exposes_no_mutating_endpoint() -> None:
+    """The engine's POSTs disarm risk and push orders; none may be reachable.
+
+    An allowlist rather than a denylist, so a future endpoint is unreachable
+    until someone adds it deliberately.
+    """
+    # Comments name the dangerous endpoints deliberately, to explain why the
+    # allowlist exists. Only the directives are the security surface.
+    directives = "\n".join(
+        line for line in _caddyfile().splitlines() if not line.strip().startswith("#")
+    )
+    assert "method GET" in directives, "the allowlist must be GET-only"
+    for mutating in (
+        "/risk/kill-switch",
+        "/paper/orders",
+        "/paper/close",
+        "/models/reload",
+        "/scenario",
+        "/analysis/run",
+    ):
+        assert mutating not in directives, f"{mutating} must never be routed by the proxy"
+
+
+def test_public_proxy_checks_authorization() -> None:
+    caddy = _caddyfile()
+    assert "Bearer {$SPYDER_API_TOKEN}" in caddy
+    assert "401" in caddy
+
+
+def test_api_token_is_never_exposed_to_the_browser() -> None:
+    """NEXT_PUBLIC_ would ship the credential to every visitor."""
+    web = _ROOT / "web"
+    for path in list(web.rglob("*.ts")) + list(web.rglob("*.tsx")):
+        if "node_modules" in path.parts or ".next" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        assert "NEXT_PUBLIC_SPYDER_API_TOKEN" not in text, path

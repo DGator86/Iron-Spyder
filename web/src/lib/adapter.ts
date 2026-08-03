@@ -52,6 +52,20 @@ const PRICE_ROWS = 92;
 
 export class EngineUnavailable extends Error {}
 
+/**
+ * Bearer token for the VPS proxy, read per-request from the server environment.
+ *
+ * `SPYDER_API_TOKEN` has no `NEXT_PUBLIC_` prefix on purpose: this module is
+ * only ever called from the route handler in `app/api/chart/route.ts`, which
+ * runs on the server. The browser talks to that route, never to the engine, so
+ * the token is never serialized into the page. Prefixing it would ship the
+ * credential to every visitor.
+ */
+function authHeaders(): Record<string, string> {
+  const token = process.env.SPYDER_API_TOKEN;
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
 async function getJson<T>(base: string, path: string, timeoutMs: number): Promise<T | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -59,8 +73,17 @@ async function getJson<T>(base: string, path: string, timeoutMs: number): Promis
     const res = await fetch(`${base}${path}`, {
       signal: controller.signal,
       cache: "no-store",
-      headers: { accept: "application/json" },
+      headers: { accept: "application/json", ...authHeaders() },
     });
+    // A 401 means the proxy is up but the token is wrong or missing. Distinct
+    // from "unreachable", and worth saying so — the alternative is a dashboard
+    // that silently shows synthetic data because of a typo in an env var.
+    if (res.status === 401 || res.status === 403) {
+      throw new EngineUnavailable(
+        `${path} -> ${res.status}: proxy rejected the token. Check SPYDER_API_TOKEN ` +
+          `matches the value in the VPS .env`,
+      );
+    }
     // 503 is the engine's documented "analytics unavailable" lockout, not a
     // transport failure — treat it as a missing section, not a dead engine.
     if (res.status === 503 || res.status === 404) return null;
