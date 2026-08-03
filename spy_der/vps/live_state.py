@@ -16,9 +16,26 @@ from spy_der.pipeline import PipelineResult
 from spy_der.vps.files import atomic_write_json
 from spy_der.vps.paths import state_paths
 
-__all__ = ["SCHEMA_VERSION", "build_live_state", "write_live_state"]
+__all__ = [
+    "SCHEMA_VERSION",
+    "STATUS_RUNNING",
+    "STATUS_STARTING",
+    "STATUS_STOPPED",
+    "build_live_state",
+    "write_live_state",
+]
 
 SCHEMA_VERSION = "iron_spyder.live.v1"
+
+#: Lifecycle values for ``system.status``. The caller states which one applies;
+#: it is never inferred from the payload. An earlier version derived it from
+#: ``result is not None or stats``, and since ``stats`` is always a populated
+#: dict that expression was permanently true — the field read "running" even in
+#: the final write on shutdown, so a dead supervisor looked identical to a live
+#: one to anything reading this file.
+STATUS_STARTING = "starting"
+STATUS_RUNNING = "running"
+STATUS_STOPPED = "stopped"
 
 
 def build_live_state(
@@ -30,9 +47,16 @@ def build_live_state(
     open_positions: int = 0,
     equity: float | None = None,
     note: str = "",
+    status: str = STATUS_RUNNING,
+    refresh_interval_seconds: float | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Assemble a dashboard-facing live-state payload."""
+    """Assemble a dashboard-facing live-state payload.
+
+    ``refresh_interval_seconds`` is how often the writer intends to republish.
+    Readers need it to tell "quiet because the market is closed" from "quiet
+    because the process died", without cross-referencing another file.
+    """
     stamp = now or datetime.now(tz=UTC)
     payload: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -44,8 +68,9 @@ def build_live_state(
         "equity": equity,
         "kill_switches": list(kill_switches or ()),
         "stats": stats or {},
+        "refresh_interval_seconds": refresh_interval_seconds,
         "system": {
-            "status": "running" if result is not None or stats else "heartbeat",
+            "status": status,
             "note": note or "VPS supervisor alive; live trading disabled",
         },
     }

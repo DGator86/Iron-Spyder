@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from spy_der.vps.heartbeat import read_heartbeats
+from spy_der.vps.heartbeat import classify_age, read_heartbeats
 
 __all__ = ["EXPECTED_SERVICES", "build_system_status"]
 
@@ -80,17 +80,29 @@ def _pipeline(state_root: Path, now: datetime) -> dict[str, Any]:
     live, note = _read_json(state_root / "live_state.json")
     if live is None:
         return {"state": "unavailable", "note": f"live_state {note}"}
-    decision = live.get("decision")
+
+    system = live.get("system") or {}
+    age = _age_seconds(live.get("generated_at"), now)
+
+    # A readable file is not a live pipeline. The last write a stopping
+    # supervisor makes says so, and a process that died without one leaves a
+    # file that simply stops ageing — so both the declared status and the age
+    # have to be consulted, or a week-old snapshot reports "ok".
+    if str(system.get("status")) == "stopped":
+        state = "stopped"
+    else:
+        state = classify_age(age, float(live.get("refresh_interval_seconds") or 0.0))
+
     return {
-        "state": "ok",
+        "state": state,
         "mode": live.get("mode"),
         "generated_at": live.get("generated_at"),
-        "age_seconds": _age_seconds(live.get("generated_at"), now),
+        "age_seconds": age,
         "open_positions": live.get("open_positions"),
         "equity": live.get("equity"),
         "kill_switches": live.get("kill_switches") or [],
-        "last_decision": decision,
-        "system": live.get("system"),
+        "last_decision": live.get("decision"),
+        "system": system,
     }
 
 
@@ -107,9 +119,16 @@ def _overall(services: list[dict[str, Any]], pipeline: dict[str, Any]) -> str:
     states = {str(s.get("state")) for s in services}
     if states & {"stale", "never_seen", "failed"}:
         return "degraded"
+    # A stopped or stale pipeline is degraded even when every heartbeat is
+    # fresh: the dashboard API can be perfectly healthy while the thing that
+    # makes decisions is not running at all.
+    if str(pipeline.get("state")) in {"stopped", "stale"}:
+        return "degraded"
     if pipeline.get("state") == "unavailable":
         return "warn"
     if states & {"late", "unknown"}:
+        return "warn"
+    if str(pipeline.get("state")) in {"late", "unknown"}:
         return "warn"
     if pipeline.get("kill_switches"):
         return "warn"

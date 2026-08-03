@@ -113,7 +113,72 @@ def test_vps_service_publishes_heartbeat_and_live_state(tmp_path):
     status = build_system_status(tmp_path, now=clock["t"])
     supervisor = next(s for s in status["services"] if s["service"] == "supervisor")
     assert supervisor["state"] == "ok"
+    # ``run()`` returned, so the service really has stopped and the final write
+    # says so. Reporting "ok" here — which this assertion used to require — is
+    # how a dead decision loop stays invisible on the dashboard.
+    assert status["pipeline"]["state"] == "stopped"
+    assert live["system"]["status"] == "stopped"
+    assert status["overall"] == "degraded"
+
+
+def test_live_state_status_is_declared_not_inferred():
+    """``stats`` is always populated, so inferring status from it is always true."""
+    running = build_live_state(mode="paper", stats={"cycles": 3}, now=SESSION)
+    assert running["system"]["status"] == "running"
+
+    stopped = build_live_state(
+        mode="paper", stats={"cycles": 3}, status="stopped", note="supervisor stopped", now=SESSION
+    )
+    assert stopped["system"]["status"] == "stopped"
+    # The note and the status must not contradict each other.
+    assert "stopped" in stopped["system"]["note"]
+
+
+def test_a_running_pipeline_reports_ok(tmp_path):
+    ensure_state_tree(tmp_path)
+    write_live_state(
+        build_live_state(
+            mode="paper",
+            stats={"cycles": 5},
+            status="running",
+            refresh_interval_seconds=300.0,
+            now=SESSION,
+        ),
+        state_root=tmp_path,
+    )
+    status = build_system_status(tmp_path, now=SESSION + timedelta(minutes=2))
     assert status["pipeline"]["state"] == "ok"
+
+
+def test_a_pipeline_that_stopped_ageing_goes_stale(tmp_path):
+    """A process killed without a clean exit leaves a file that simply stops.
+
+    No "stopped" marker is ever written in that case, so age is the only
+    evidence the decision loop is gone.
+    """
+    ensure_state_tree(tmp_path)
+    write_live_state(
+        build_live_state(
+            mode="paper",
+            stats={"cycles": 5},
+            status="running",
+            refresh_interval_seconds=300.0,
+            now=SESSION,
+        ),
+        state_root=tmp_path,
+    )
+
+    # Within one interval: fine. Just past it: late. Well beyond: stale.
+    assert build_system_status(tmp_path, now=SESSION + timedelta(minutes=4))["pipeline"][
+        "state"
+    ] == "ok"
+    assert build_system_status(tmp_path, now=SESSION + timedelta(minutes=8))["pipeline"][
+        "state"
+    ] == "late"
+
+    dead = build_system_status(tmp_path, now=SESSION + timedelta(hours=6))
+    assert dead["pipeline"]["state"] == "stale"
+    assert dead["overall"] == "degraded"
 
 
 def test_dashboard_api_is_read_only(tmp_path):
