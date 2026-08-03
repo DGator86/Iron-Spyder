@@ -13,6 +13,7 @@ Read-only and defensive: a missing file becomes a note, never an exception.
 from __future__ import annotations
 
 import json
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -76,6 +77,23 @@ def _services(state_root: Path, now: datetime) -> list[dict[str, Any]]:
     return out
 
 
+def _positive_interval(value: Any) -> float | None:
+    """A finite positive interval, or ``None`` for anything unusable.
+
+    Defensive because the value is read off disk: a corrupt or hand-edited
+    field must not raise out of a read-only status call.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(seconds) or seconds <= 0.0:
+        return None
+    return seconds
+
+
 def _pipeline(state_root: Path, now: datetime) -> dict[str, Any]:
     live, note = _read_json(state_root / "live_state.json")
     if live is None:
@@ -83,6 +101,7 @@ def _pipeline(state_root: Path, now: datetime) -> dict[str, Any]:
 
     system = live.get("system") or {}
     age = _age_seconds(live.get("generated_at"), now)
+    interval = _positive_interval(live.get("refresh_interval_seconds"))
 
     # A readable file is not a live pipeline. The last write a stopping
     # supervisor makes says so, and a process that died without one leaves a
@@ -90,8 +109,16 @@ def _pipeline(state_root: Path, now: datetime) -> dict[str, Any]:
     # have to be consulted, or a week-old snapshot reports "ok".
     if str(system.get("status")) == "stopped":
         state = "stopped"
+    elif interval is None:
+        # Without a usable interval the age cannot be judged, and claiming "ok"
+        # would resurrect the very bug this function exists to prevent.
+        # ``classify_age`` treats a non-positive interval as ok, so the interval
+        # must be validated here rather than passed through. A state root
+        # written before ``refresh_interval_seconds`` existed takes this path on
+        # every read, which is exactly the upgrade case.
+        state = "unknown"
     else:
-        state = classify_age(age, float(live.get("refresh_interval_seconds") or 0.0))
+        state = classify_age(age, interval)
 
     return {
         "state": state,

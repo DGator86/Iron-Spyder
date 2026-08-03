@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 
 from spy_der.data.providers.base import SyntheticProvider
@@ -179,6 +180,45 @@ def test_a_pipeline_that_stopped_ageing_goes_stale(tmp_path):
     dead = build_system_status(tmp_path, now=SESSION + timedelta(hours=6))
     assert dead["pipeline"]["state"] == "stale"
     assert dead["overall"] == "degraded"
+
+
+@pytest.mark.parametrize(
+    "interval",
+    [None, 0, -300, "banana", "", float("nan"), float("inf"), True, [], {"a": 1}],
+)
+def test_an_unusable_refresh_interval_is_unknown_not_ok(tmp_path, interval):
+    """Age cannot be judged without a usable interval, so never claim health.
+
+    ``classify_age`` returns "ok" for any non-positive interval, so passing an
+    unvalidated value straight through resurrects the always-healthy bug. The
+    ``None`` case is the upgrade path: a state root written before
+    ``refresh_interval_seconds`` existed has no such field.
+    """
+    ensure_state_tree(tmp_path)
+    payload = build_live_state(mode="paper", stats={"cycles": 5}, status="running", now=SESSION)
+    payload["refresh_interval_seconds"] = interval
+    write_live_state(payload, state_root=tmp_path)
+
+    # Seven months stale, and it must still refuse to report "ok".
+    status = build_system_status(tmp_path, now=SESSION + timedelta(days=214))
+    assert status["pipeline"]["state"] == "unknown"
+    assert status["overall"] != "ok"
+
+
+def test_a_corrupt_interval_does_not_raise_out_of_a_status_read(tmp_path):
+    """This module promises a bad file becomes a note, never an exception."""
+    ensure_state_tree(tmp_path)
+    atomic_write_json(
+        tmp_path / "live_state.json",
+        {"generated_at": SESSION.isoformat(), "refresh_interval_seconds": "banana"},
+    )
+    status = build_system_status(tmp_path, now=SESSION)  # must not raise
+    assert status["pipeline"]["state"] == "unknown"
+
+
+def test_build_live_state_omits_no_interval_by_default():
+    """The default is None, which is precisely why readers must validate it."""
+    assert build_live_state(mode="paper", now=SESSION)["refresh_interval_seconds"] is None
 
 
 def test_dashboard_api_is_read_only(tmp_path):
