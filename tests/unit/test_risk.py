@@ -26,7 +26,7 @@ from spy_der.domain.strategy import (
 )
 from spy_der.risk.engine import PortfolioState, RiskEngine
 from spy_der.risk.limits import KillSwitch, RiskConfig, SessionState
-from spy_der.risk.sizing import size_position
+from spy_der.risk.sizing import MIN_CONFIDENCE_FACTOR, confidence_factor, size_position
 from tests.conftest import leg
 
 CALL = OptionRight.CALL
@@ -433,6 +433,67 @@ def test_sizing_scales_with_quality():
     )
     assert high.adjusted_risk > low.adjusted_risk
     assert high.contracts >= low.contracts
+
+
+def test_confidence_below_the_floor_sizes_nothing():
+    """That range is vetoed upstream; the mapping must not disagree."""
+    assert confidence_factor(0.05, 0.20) == 0.0
+    assert confidence_factor(0.20, 0.20) == 0.0
+    assert confidence_factor(float("nan"), 0.20) == 0.0
+
+
+def test_confidence_just_above_the_floor_can_afford_a_contract():
+    """The dead band: admitted by the veto, but unsizeable under raw confidence.
+
+    Raw confidence double-counts the ``min_confidence`` veto — it scales size
+    from zero across a range already excluded — so a forecast at 0.25 got 25%
+    of base risk and could not buy one contract of the cheapest SPY vertical.
+    """
+    factor = confidence_factor(0.25, 0.20)
+    assert factor >= MIN_CONFIDENCE_FACTOR
+    # $100k equity, base fraction 0.005, other quality terms at 0.8.
+    budget = 100_000.0 * 0.005 * factor * (0.8**3)
+    assert budget > 100.0  # clears a typical $73-95 vertical
+    assert 100_000.0 * 0.005 * 0.25 * (0.8**3) < 73.0  # what it was before
+
+
+def test_confidence_mapping_is_monotone_and_bounded():
+    floor = 0.20
+    values = [confidence_factor(c / 100.0, floor) for c in range(21, 101)]
+    assert all(a <= b for a, b in zip(values[:-1], values[1:], strict=True))
+    assert values[-1] == pytest.approx(1.0)
+    assert all(MIN_CONFIDENCE_FACTOR <= v <= 1.0 for v in values)
+
+
+def test_full_confidence_is_unchanged_by_the_mapping():
+    """The fix must not inflate size where confidence was already high."""
+    assert confidence_factor(1.0, 0.20) == pytest.approx(1.0)
+
+
+def test_the_risk_budget_and_sizing_agree_on_confidence():
+    """A filter that scaled confidence differently would discard sizeable trades."""
+    config = RiskConfig()
+    engine = RiskEngine(config=config)
+    candidate = make_candidate()
+    budget = engine.risk_budget(
+        broker=BrokerState(equity=100_000.0),
+        portfolio=PortfolioState(),
+        confidence=0.30,
+        stability=0.8,
+        calibration_quality=0.8,
+        liquidity=candidate.liquidity.score,
+    )
+    sized = size_position(
+        candidate,
+        equity=100_000.0,
+        confidence=0.30,
+        stability=0.8,
+        calibration_quality=0.8,
+        config=config,
+    )
+    # The budget is the pre-filter for exactly this sizing call, so anything it
+    # admits must survive sizing.
+    assert budget == pytest.approx(sized.adjusted_risk)
 
 
 def test_sizing_respects_the_hard_contract_cap():

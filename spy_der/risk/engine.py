@@ -24,7 +24,7 @@ from spy_der.domain.forecast import ForecastBundle
 from spy_der.domain.market import MarketSnapshot
 from spy_der.domain.strategy import StrategyCandidate
 from spy_der.risk.limits import KillSwitch, RiskConfig, SessionState
-from spy_der.risk.sizing import SizingResult, size_position
+from spy_der.risk.sizing import SizingResult, confidence_factor, size_position
 
 
 @dataclass
@@ -383,8 +383,12 @@ class RiskEngine:
         """
         cfg = self.config
         base = max(0.0, broker.equity) * cfg.base_risk_fraction
+        # Same confidence mapping the authoritative sizing uses. If this filter
+        # scaled confidence differently it would discard candidates that sizing
+        # would then have accepted, which is the failure this budget exists to
+        # prevent, only in the opposite direction.
         quality = (
-            max(0.0, min(1.0, confidence))
+            confidence_factor(confidence, cfg.trade.min_confidence)
             * max(0.0, min(1.0, liquidity))
             * max(0.0, min(1.0, stability))
             * max(0.0, min(1.0, calibration_quality))
