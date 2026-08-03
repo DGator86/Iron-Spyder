@@ -317,7 +317,27 @@ Stated plainly, because they bound what the current numbers mean:
    the state engine separates the regimes the generator encodes. The spec
    requires walk-forward validation on real data before those weights carry any
    authority, and that has not been done.
-2. **No historical SPY data ships.** The loader exists and is tested, but every
+2. **Edge detection is far less sensitive than it should be, and is one-sided.**
+   The synthetic chain is priced off `atm_iv` while paths are drawn at
+   `realized_vol`, so `ScenarioSpec.vol_edge` is a known, constructed
+   mispricing. Sweeping it against a fixed chain
+   (`tests/synthetic/test_edge_detection.py`) shows the system admits **no
+   candidate at all until realized volatility exceeds implied by roughly 0.24**
+   — a twenty-four-point gap, far beyond anything a real chain offers.
+
+   It is also directional. Twelve of the fifteen named scenarios carry
+   *negative* edge, which is a short-premium opportunity, and the system takes
+   none of them. The cause sits upstream of strategy selection: `dealer_agreement`
+   multiplies into the single confidence score that gates all trading, and in
+   quiet regimes the sign conventions disagree (≈0.37 against ≈0.86 in trending
+   ones), so confidence collapses before any short-premium structure is
+   considered. That edge does not depend on dealer positioning, so it is being
+   vetoed by uncertainty about an unrelated input.
+
+   Both facts are asserted in the test suite rather than left as prose, so
+   neither can drift silently and an improvement shows up as a failing
+   characterization test.
+3. **No historical SPY data ships.** The loader exists and is tested, but every
    number in this README is from the synthetic generator. Because it prices from
    the same model the simulator samples, it is arbitrage-free by construction
    and cannot demonstrate edge — only that the machinery is correct and that the
@@ -325,14 +345,14 @@ Stated plainly, because they bound what the current numbers mean:
    `historical.COLUMN_ALIASES` covers the common vendor spellings but has not
    been run against a real vendor extract; `inspect` is the first thing to run
    on one.
-3. **The learned baselines are unfitted.** They fall back to the analytic GBM
+4. **The learned baselines are unfitted.** They fall back to the analytic GBM
    priors, which are calibrated by construction but carry no learned signal.
    Nonlinear specialists are not implemented; the ensemble is wired for them and
    disabled by default per the promotion rules.
-4. **Coarsening `valuation_steps` biases exit simulation optimistically** — a
+5. **Coarsening `valuation_steps` biases exit simulation optimistically** — a
    stop that would have fired between two observations is missed when price
    recovers. Defaults leave a few minutes per step; treat coarser settings as a
    speed trade that flatters results.
-5. **Path simulation is not calibrated to SPY.** The regime dynamics are priors.
+6. **Path simulation is not calibrated to SPY.** The regime dynamics are priors.
    What is verified is that the driftless constant-volatility case reproduces the
    closed forms.

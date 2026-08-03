@@ -111,6 +111,21 @@ class ScenarioSpec:
     expected_tradeable: bool = True
     seed: int = 7
 
+    @property
+    def vol_edge(self) -> float:
+        """Realized minus implied at the money: the edge built into this chain.
+
+        The chain is priced off :attr:`atm_iv` while paths are drawn at
+        :attr:`realized_vol`, so this difference *is* the mispricing, and it is
+        the only source of genuine edge in the synthetic world. Everything else
+        about the chain is arbitrage-free by construction.
+
+        Positive favours long volatility, negative favours short. A scenario at
+        zero has nothing to find, and no-trade is the correct answer there —
+        which makes this the quantity to test edge detection against.
+        """
+        return self.realized_vol - self.atm_iv
+
 
 #: Reference tenor for the term-structure slope: one week, in years.
 _TERM_REFERENCE_TAU = 7.0 / 365.0
