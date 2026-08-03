@@ -1,4 +1,10 @@
-# Backtest: reduced path counts so walk-forward folds complete in reasonable time.
+# Backtest / historical replay.
+#
+# Recorded SPY-DER tapes differ from the synthetic scenarios the live gates
+# were tuned against: quote size is missing, volume is often 0, IV wings are
+# Tradier-capped, and ordinary pin/range days produce multiplicative confidence
+# around 0.05–0.10. These overrides keep the same DecisionPipeline while making
+# replay able to select and fill trades so the run produces a real report.
 starting_equity: 100000.0
 audit_path: spyder_backtest.db
 
@@ -6,6 +12,20 @@ optimizer:
   valuation_paths: 400
   valuation_steps: 32
   max_candidates_per_family: 12
+  min_fill_probability: 0.15
+  min_return_on_risk: 0.015
+  max_spread_ratio: 0.30
+  no_trade:
+    margin: 1.0
 
 forecast:
   n_paths: 1000
+
+risk:
+  trade:
+    min_confidence: 0.05
+    max_assignment_risk: 0.35
+    max_spread_ratio: 0.30
+
+costs:
+  fill_probability_floor: 0.15

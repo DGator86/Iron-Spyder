@@ -44,9 +44,25 @@ def test_snapshot_from_open_record():
     assert snap.spot > 0
     assert len(snap.option_chain) > 0
     assert all(q.implied_volatility > 0 for q in snap.option_chain)
+    # Tradier-capped IV=10 rows must be dropped or re-solved into bounds.
+    assert all(q.implied_volatility <= 5.0 for q in snap.option_chain)
     assert any(q.right is OptionRight.CALL for q in snap.option_chain)
+    # Tapes omit size; importer must infer depth so fill probability can clear
+    # the optimizer gate.
+    assert all(q.bid_size >= 10 and q.ask_size >= 10 for q in snap.option_chain)
     assert snap.data_quality_score >= 0.0
     assert snap.spy_bars
+
+
+def test_context_maps_vix_from_volatility_term_structure():
+    record = next(iter_records(FIXTURE))
+    snap_raw = record["snapshot"]
+    snap_raw["volatility_term_structure"] = {"vix": 14.2, "vvix": 88.0}
+    snap_raw["catalyst_state"] = {"lockout_active": False, "reason": None}
+    snap = snapshot_from_record(record, open_only=True)
+    assert snap is not None
+    assert snap.context.vix == pytest.approx(14.2)
+    assert snap.context.vvix == pytest.approx(88.0)
 
 
 def test_provider_replay_is_point_in_time():

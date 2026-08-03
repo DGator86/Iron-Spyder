@@ -137,7 +137,12 @@ def load_settings(mode: Mode | str = Mode.PAPER, *, path: Path | None = None) ->
 
 
 def _apply(settings: Settings, overrides: dict[str, Any]) -> Settings:
-    """Apply a shallow YAML override map onto the nested dataclasses."""
+    """Apply a YAML override map onto nested dataclasses.
+
+    Nested sections (``risk.trade.min_confidence``, ``optimizer.no_trade.margin``)
+    are merged recursively so mode files can tune leaf fields without replacing
+    whole sub-objects with plain dicts.
+    """
     scalar = {
         key: value
         for key, value in overrides.items()
@@ -156,10 +161,24 @@ def _apply(settings: Settings, overrides: dict[str, Any]) -> Settings:
         if not isinstance(values, dict):
             continue
         current = getattr(settings, target)
-        known = {k: v for k, v in values.items() if hasattr(current, k)}
-        unknown = set(values) - set(known)
-        if unknown:
-            raise ValueError(f"unknown {section} settings: {sorted(unknown)}")
-        setattr(settings, target, replace(current, **known) if known else current)
+        setattr(settings, target, _merge_dataclass(current, values, path=section))
 
     return settings
+
+
+def _merge_dataclass(current: Any, values: dict[str, Any], *, path: str) -> Any:
+    """Recursively replace dataclass fields from a YAML mapping."""
+    known: dict[str, Any] = {}
+    unknown: set[str] = set()
+    for key, value in values.items():
+        if not hasattr(current, key):
+            unknown.add(key)
+            continue
+        existing = getattr(current, key)
+        if isinstance(value, dict) and hasattr(existing, "__dataclass_fields__"):
+            known[key] = _merge_dataclass(existing, value, path=f"{path}.{key}")
+        else:
+            known[key] = value
+    if unknown:
+        raise ValueError(f"unknown {path} settings: {sorted(unknown)}")
+    return replace(current, **known) if known else current

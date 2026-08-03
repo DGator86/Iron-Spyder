@@ -154,10 +154,21 @@ def fill_probability(
     # Each additional leg beyond two reduces the chance of an atomic fill.
     leg_term = float(np.clip(1.0 - 0.08 * max(0, leg_count - 2), 0.4, 1.0))
 
-    volume_term = float(
-        np.clip(np.log1p(min(q.volume for q in quotes)) / np.log1p(200.0), 0.25, 1.0)
-    )
+    # Historical feeds (and some live snapshots early in the session) report
+    # volume=0 while open interest is meaningful. Use OI as a soft activity
+    # proxy so fill probability is not structurally capped below typical
+    # optimizer gates whenever volume is missing.
+    activity = min(_activity_proxy(q) for q in quotes)
+    volume_term = float(np.clip(np.log1p(activity) / np.log1p(200.0), 0.25, 1.0))
     close_term = 1.0 if minutes_to_close > 15.0 else 0.6
 
     probability = spread_term * size_term * leg_term * volume_term * close_term
     return float(np.clip(probability, model.fill_probability_floor, 0.99))
+
+
+def _activity_proxy(quote: OptionQuote) -> float:
+    if quote.volume > 0:
+        return float(quote.volume)
+    if quote.open_interest > 0:
+        return float(max(1, quote.open_interest // 20))
+    return 0.0

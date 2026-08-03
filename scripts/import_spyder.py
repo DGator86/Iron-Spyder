@@ -20,7 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
-from collections import Counter, defaultdict
+from collections import Counter
 from collections.abc import Iterator
 from datetime import date, datetime
 from itertools import islice
@@ -156,12 +156,13 @@ def _daily_breakdown(result: BacktestResult) -> list[dict[str, Any]]:
             row["states"][decision.forecast.dominant_state.value] += 1
 
     # Not a Counter: that is dict[str, int], and realized P&L is a float, so
-    # accumulating into one silently claims whole-dollar amounts.
-    pnl_by_day: defaultdict[str, float] = defaultdict(float)
+    # accumulating into one would silently truncate to whole dollars.
+    pnl_by_day: dict[str, float] = {}
     for position in result.closed_positions:
         if position.closed_at is None:
             continue
-        pnl_by_day[position.closed_at.date().isoformat()] += position.realized_pnl
+        day_key = position.closed_at.date().isoformat()
+        pnl_by_day[day_key] = pnl_by_day.get(day_key, 0.0) + position.realized_pnl
 
     out: list[dict[str, Any]] = []
     for day in sorted(by_day):

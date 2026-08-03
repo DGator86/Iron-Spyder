@@ -211,10 +211,24 @@ def _option_quote(
     mark = _to_float(row.get("mark"), 0.5 * (bid + ask) if bid or ask else 0.0)
     last = _to_float(row.get("last"), mark)
     iv = _to_float(row.get("implied_volatility"))
+    volume = _to_int(row.get("volume"))
+    open_interest = _to_int(row.get("open_interest"))
     symbol = str(contract.get("contract_id") or "")
     if not symbol:
         code = "C" if right is OptionRight.CALL else "P"
         symbol = f"SPY{expiration:%y%m%d}{code}{int(round(strike * 1000)):08d}"
+
+    # Tradier-backed SPY-DER tapes omit bid/ask size. Size=1 structurally caps
+    # fill probability below the optimizer's 0.25 gate, so approximate displayed
+    # depth from open interest when the tape has no size fields.
+    bid_size = _to_int(row.get("bid_size") or row.get("bidSize") or row.get("size"))
+    ask_size = _to_int(row.get("ask_size") or row.get("askSize") or row.get("size"))
+    if bid_size <= 0 or ask_size <= 0:
+        inferred = _infer_quote_size(open_interest=open_interest, volume=volume)
+        if bid_size <= 0:
+            bid_size = inferred
+        if ask_size <= 0:
+            ask_size = inferred
 
     quote = OptionQuote(
         contract_symbol=symbol,
@@ -225,37 +239,57 @@ def _option_quote(
         bid=bid,
         ask=ask,
         last=last,
-        bid_size=1,
-        ask_size=1,
-        volume=_to_int(row.get("volume")),
-        open_interest=_to_int(row.get("open_interest")),
+        bid_size=bid_size,
+        ask_size=ask_size,
+        volume=volume,
+        open_interest=open_interest,
         implied_volatility=iv,
         underlying_price=spot,
         source=str(row.get("source") or "spyder_recording"),
     )
 
-    if quote.implied_volatility <= 0.0 and derive_missing_iv and quote.mid > 0.0 and quote.tau > 0.0:
-        solved = pricing.implied_volatility(
-            quote.mid,
-            spot,
-            quote.strike,
-            quote.tau,
-            0.04,
-            0.013,
-            quote.right,
-        )
-        if solved is not None:
-            quote = replace(quote, implied_volatility=solved)
-            stats.iv_derived += 1
+    dq_bounds = DataQualityConfig()
+    iv_in_bounds = dq_bounds.min_iv <= quote.implied_volatility <= dq_bounds.max_iv
+    if (quote.implied_volatility <= 0.0 or not iv_in_bounds) and derive_missing_iv:
+        if quote.mid > 0.0 and quote.tau > 0.0:
+            solved = pricing.implied_volatility(
+                quote.mid,
+                spot,
+                quote.strike,
+                quote.tau,
+                0.04,
+                0.013,
+                quote.right,
+            )
+            if solved is not None and dq_bounds.min_iv <= solved <= dq_bounds.max_iv:
+                quote = replace(quote, implied_volatility=solved)
+                stats.iv_derived += 1
+                iv_in_bounds = True
+            else:
+                stats.iv_unavailable += 1
         else:
             stats.iv_unavailable += 1
 
-    if quote.implied_volatility <= 0.0 and drop_unpriceable:
+    # Drop unpriceable or Tradier-capped (IV=10) contracts so they cannot sink
+    # the session DQ score or poison ATM / GEX reads.
+    if drop_unpriceable and (
+        quote.implied_volatility <= 0.0
+        or not (dq_bounds.min_iv <= quote.implied_volatility <= dq_bounds.max_iv)
+    ):
         stats.contracts_dropped += 1
         return None
 
     stats.contracts_kept += 1
     return quote
+
+
+def _infer_quote_size(*, open_interest: int, volume: int) -> int:
+    """Approximate NBBO size when the recording omitted it."""
+    if open_interest > 0:
+        return max(10, min(250, open_interest // 40 or 10))
+    if volume > 0:
+        return max(10, min(100, volume))
+    return 25
 
 
 def snapshot_from_record(
@@ -339,10 +373,31 @@ def snapshot_from_record(
 
     breadth_raw = snap.get("breadth")
     breadth: dict[str, Any] = breadth_raw if isinstance(breadth_raw, dict) else {}
+    vol_term = snap.get("volatility_term_structure")
+    vol_term_map: dict[str, Any] = vol_term if isinstance(vol_term, dict) else {}
+    catalyst = snap.get("catalyst_state")
+    catalyst_map: dict[str, Any] = catalyst if isinstance(catalyst, dict) else {}
+    events: list[str] = []
+    if catalyst_map.get("lockout_active"):
+        reason = catalyst_map.get("reason") or "catalyst_lockout"
+        events.append(str(reason))
+
     context = ContextSnapshot(
-        advance_decline=_to_float(breadth.get("advance_decline"), 0.0) or None,
-        up_down_volume_ratio=_to_float(breadth.get("up_down_volume_ratio"), 0.0) or None,
+        vix=_to_float(vol_term_map.get("vix"), 0.0) or None,
+        vvix=_to_float(vol_term_map.get("vvix"), 0.0) or None,
+        # SPY-DER breadth uses rsp_spy_div / sector_align rather than classic A/D.
+        advance_decline=(
+            _to_float(breadth.get("advance_decline"), 0.0)
+            or _to_float(breadth.get("rsp_spy_div"), 0.0)
+            or None
+        ),
+        up_down_volume_ratio=(
+            _to_float(breadth.get("up_down_volume_ratio"), 0.0)
+            or _to_float(breadth.get("sector_align"), 0.0)
+            or None
+        ),
         minutes_to_close=max(0.0, minutes_to_close),
+        scheduled_events=tuple(events),
     )
 
     snapshot = MarketSnapshot(
