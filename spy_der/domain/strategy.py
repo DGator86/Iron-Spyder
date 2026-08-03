@@ -113,10 +113,30 @@ class ExitPlan:
 
     profit_target_fraction: float
     stop_loss_fraction: float
+    """Risk stop as a fraction of maximum loss. Must be in ``(0, 1]``."""
+
     max_holding_minutes: float
     invalidation_states: tuple[str, ...] = ()
     close_before_expiry_minutes: float = 30.0
     min_forecast_probability: float = 0.0
+
+    stop_loss_credit_multiple: float | None = None
+    """Risk stop as a multiple of credit received, for credit structures.
+
+    Credit spreads are conventionally stopped at a multiple of the credit
+    ("stop at 2x credit"), not at a fraction of maximum loss. Those two
+    denominators differ: ``max_loss = width - credit``, so 2x credit on a $5
+    spread taken for $1.50 is $3.00, which is 0.86 of the $3.50 maximum loss —
+    and on a wider spread the same multiple is a much smaller fraction.
+
+    Expressing the intent directly avoids the failure this field was added to
+    fix: credit multiples written into ``stop_loss_fraction`` exceed 1.0, get
+    clamped to 1.0, and leave the structure with no stop before maximum loss.
+
+    When set, this takes precedence over ``stop_loss_fraction`` for any
+    structure opened for a credit. ``stop_loss_fraction`` remains the fallback
+    for a structure that turns out to be a debit.
+    """
 
     def __post_init__(self) -> None:
         if not 0.0 < self.profit_target_fraction <= 1.0:
@@ -125,6 +145,23 @@ class ExitPlan:
             raise ValueError("stop_loss_fraction must be in (0, 1]")
         if self.max_holding_minutes <= 0.0:
             raise ValueError("max_holding_minutes must be positive")
+        if self.stop_loss_credit_multiple is not None and self.stop_loss_credit_multiple <= 0.0:
+            raise ValueError("stop_loss_credit_multiple must be positive when set")
+
+    def stop_loss_dollars(self, *, max_loss: float, credit_received: float = 0.0) -> float:
+        """Per-contract loss, in positive dollars, at which the risk stop fires.
+
+        One definition, used by both the position manager that enforces the stop
+        and the simulator that prices it. If they disagreed, the optimizer would
+        value a stop the manager never applies.
+
+        The result is capped at ``max_loss``: a defined-risk structure cannot
+        lose more than that, so a larger threshold is unreachable and amounts to
+        no stop at all.
+        """
+        if self.stop_loss_credit_multiple is not None and credit_received > 0.0:
+            return min(self.stop_loss_credit_multiple * credit_received, max_loss)
+        return self.stop_loss_fraction * max_loss
 
     @property
     def reasons_covered(self) -> frozenset[ExitReason]:
