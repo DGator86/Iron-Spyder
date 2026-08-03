@@ -155,6 +155,8 @@ def _daily_breakdown(result: BacktestResult) -> list[dict[str, Any]]:
         if decision.forecast is not None:
             row["states"][decision.forecast.dominant_state.value] += 1
 
+    # Not a Counter: that is dict[str, int], and realized P&L is a float, so
+    # accumulating into one would silently truncate to whole dollars.
     pnl_by_day: dict[str, float] = {}
     for position in result.closed_positions:
         if position.closed_at is None:

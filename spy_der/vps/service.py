@@ -30,7 +30,13 @@ from spy_der.risk.engine import RiskEngine
 from spy_der.runtime.state_store import RuntimeStateStore
 from spy_der.runtime.supervisor import Supervisor, SupervisorConfig, SupervisorStats, log_alert
 from spy_der.vps.heartbeat import write_heartbeat
-from spy_der.vps.live_state import build_live_state, write_live_state
+from spy_der.vps.live_state import (
+    STATUS_RUNNING,
+    STATUS_STARTING,
+    STATUS_STOPPED,
+    build_live_state,
+    write_live_state,
+)
 from spy_der.vps.paths import ensure_state_tree, state_paths
 
 __all__ = ["VpsService", "VpsServiceConfig", "build_arg_parser", "build_service", "main"]
@@ -69,11 +75,24 @@ class VpsService:
         self._install_hooks()
         try:
             # Publish once at start so the dashboard never sees a silent fresh unit.
-            self._publish(None, self.supervisor.clock(), note="supervisor starting")
+            self._publish(
+                None,
+                self.supervisor.clock(),
+                note="supervisor starting",
+                status=STATUS_STARTING,
+            )
             return self.supervisor.run()
         finally:
             self._remove_hooks()
-            self._publish(self._last_result, self.supervisor.clock(), note="supervisor stopped")
+            # The exit write must say stopped. This is the last thing the
+            # dashboard will read until the unit comes back, so reporting
+            # "running" here is how a dead daemon goes unnoticed.
+            self._publish(
+                self._last_result,
+                self.supervisor.clock(),
+                note="supervisor stopped",
+                status=STATUS_STOPPED,
+            )
 
     def _install_hooks(self) -> None:
         self._original_cycle = self.supervisor.run_cycle
@@ -110,12 +129,23 @@ class VpsService:
         if self._original_closed is not None:
             self.supervisor._on_market_closed = self._original_closed  # type: ignore[method-assign]
 
+    def _refresh_interval(self) -> float:
+        """How often this service republishes, in seconds.
+
+        Floored at 60 so a fast decision interval does not make every reader
+        flag the file as late during the gap between two cycles. The
+        market-closed path republishes on each idle poll, which is more often
+        than this, so the floor bounds the slowest case.
+        """
+        return max(self.config.decision_interval.total_seconds(), 60.0)
+
     def _publish(
         self,
         result: PipelineResult | None,
         now: datetime,
         *,
         note: str = "",
+        status: str = STATUS_RUNNING,
     ) -> None:
         if result is not None:
             self._last_result = result
@@ -129,6 +159,8 @@ class VpsService:
             open_positions=self.supervisor.pipeline.portfolio.open_count,
             equity=self.supervisor.pipeline.broker.equity,
             note=note,
+            status=status,
+            refresh_interval_seconds=self._refresh_interval(),
             now=now,
         )
         try:
@@ -136,14 +168,13 @@ class VpsService:
         except OSError:
             log.exception("failed to write live_state")
 
-        interval = self.config.decision_interval.total_seconds()
         detail = (
             f"cycles={stats['cycles']} trades={stats['trades']} open={payload['open_positions']}"
         )
         write_heartbeat(
             self.config.state_root,
             SERVICE_NAME,
-            interval_seconds=max(interval, 60.0),
+            interval_seconds=self._refresh_interval(),
             detail=detail,
             extra={"mode": self.mode, "kill_switches": kill},
             now=now,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 
 from spy_der.data.providers.base import SyntheticProvider
@@ -113,7 +114,111 @@ def test_vps_service_publishes_heartbeat_and_live_state(tmp_path):
     status = build_system_status(tmp_path, now=clock["t"])
     supervisor = next(s for s in status["services"] if s["service"] == "supervisor")
     assert supervisor["state"] == "ok"
+    # ``run()`` returned, so the service really has stopped and the final write
+    # says so. Reporting "ok" here — which this assertion used to require — is
+    # how a dead decision loop stays invisible on the dashboard.
+    assert status["pipeline"]["state"] == "stopped"
+    assert live["system"]["status"] == "stopped"
+    assert status["overall"] == "degraded"
+
+
+def test_live_state_status_is_declared_not_inferred():
+    """``stats`` is always populated, so inferring status from it is always true."""
+    running = build_live_state(mode="paper", stats={"cycles": 3}, now=SESSION)
+    assert running["system"]["status"] == "running"
+
+    stopped = build_live_state(
+        mode="paper", stats={"cycles": 3}, status="stopped", note="supervisor stopped", now=SESSION
+    )
+    assert stopped["system"]["status"] == "stopped"
+    # The note and the status must not contradict each other.
+    assert "stopped" in stopped["system"]["note"]
+
+
+def test_a_running_pipeline_reports_ok(tmp_path):
+    ensure_state_tree(tmp_path)
+    write_live_state(
+        build_live_state(
+            mode="paper",
+            stats={"cycles": 5},
+            status="running",
+            refresh_interval_seconds=300.0,
+            now=SESSION,
+        ),
+        state_root=tmp_path,
+    )
+    status = build_system_status(tmp_path, now=SESSION + timedelta(minutes=2))
     assert status["pipeline"]["state"] == "ok"
+
+
+def test_a_pipeline_that_stopped_ageing_goes_stale(tmp_path):
+    """A process killed without a clean exit leaves a file that simply stops.
+
+    No "stopped" marker is ever written in that case, so age is the only
+    evidence the decision loop is gone.
+    """
+    ensure_state_tree(tmp_path)
+    write_live_state(
+        build_live_state(
+            mode="paper",
+            stats={"cycles": 5},
+            status="running",
+            refresh_interval_seconds=300.0,
+            now=SESSION,
+        ),
+        state_root=tmp_path,
+    )
+
+    # Within one interval: fine. Just past it: late. Well beyond: stale.
+    assert build_system_status(tmp_path, now=SESSION + timedelta(minutes=4))["pipeline"][
+        "state"
+    ] == "ok"
+    assert build_system_status(tmp_path, now=SESSION + timedelta(minutes=8))["pipeline"][
+        "state"
+    ] == "late"
+
+    dead = build_system_status(tmp_path, now=SESSION + timedelta(hours=6))
+    assert dead["pipeline"]["state"] == "stale"
+    assert dead["overall"] == "degraded"
+
+
+@pytest.mark.parametrize(
+    "interval",
+    [None, 0, -300, "banana", "", float("nan"), float("inf"), True, [], {"a": 1}],
+)
+def test_an_unusable_refresh_interval_is_unknown_not_ok(tmp_path, interval):
+    """Age cannot be judged without a usable interval, so never claim health.
+
+    ``classify_age`` returns "ok" for any non-positive interval, so passing an
+    unvalidated value straight through resurrects the always-healthy bug. The
+    ``None`` case is the upgrade path: a state root written before
+    ``refresh_interval_seconds`` existed has no such field.
+    """
+    ensure_state_tree(tmp_path)
+    payload = build_live_state(mode="paper", stats={"cycles": 5}, status="running", now=SESSION)
+    payload["refresh_interval_seconds"] = interval
+    write_live_state(payload, state_root=tmp_path)
+
+    # Seven months stale, and it must still refuse to report "ok".
+    status = build_system_status(tmp_path, now=SESSION + timedelta(days=214))
+    assert status["pipeline"]["state"] == "unknown"
+    assert status["overall"] != "ok"
+
+
+def test_a_corrupt_interval_does_not_raise_out_of_a_status_read(tmp_path):
+    """This module promises a bad file becomes a note, never an exception."""
+    ensure_state_tree(tmp_path)
+    atomic_write_json(
+        tmp_path / "live_state.json",
+        {"generated_at": SESSION.isoformat(), "refresh_interval_seconds": "banana"},
+    )
+    status = build_system_status(tmp_path, now=SESSION)  # must not raise
+    assert status["pipeline"]["state"] == "unknown"
+
+
+def test_build_live_state_omits_no_interval_by_default():
+    """The default is None, which is precisely why readers must validate it."""
+    assert build_live_state(mode="paper", now=SESSION)["refresh_interval_seconds"] is None
 
 
 def test_dashboard_api_is_read_only(tmp_path):
