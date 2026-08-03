@@ -6,6 +6,7 @@ Fails on 0DTE/SPY-DER path leakage, GPU/CUDA wiring, or incomplete service set.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -202,10 +203,33 @@ def test_remote_deploy_creates_every_declared_state_directory() -> None:
         assert name in text, f"state directory {name} is never created"
 
 
-def test_remote_deploy_owns_state_as_the_service_user() -> None:
+def test_remote_deploy_owns_state_by_numeric_uid() -> None:
+    """The chown must be numeric, and must match the Dockerfile's uid.
+
+    Owning by *name* is what broke the live deployment: the host account and the
+    container account were both called ``iron-spyder`` but carried different
+    uids, and a bind mount only transports the number. The tree looked correctly
+    owned from the host while every container write was denied.
+    """
     text = _remote_deploy()
     assert "SVC_USER=iron-spyder" in text
-    assert 'chown -R "$SVC_USER:$SVC_USER" "$STATE_DIR"' in text
+    assert "SVC_UID=10001" in text
+    assert 'chown -R "$SVC_UID:$SVC_UID" "$STATE_DIR"' in text
+    assert 'chown -R "$SVC_USER:$SVC_USER" "$STATE_DIR"' not in text
+
+
+def test_state_uid_matches_the_container_user() -> None:
+    """Drift between these two numbers silently un-writes the state tree."""
+    deploy = _remote_deploy()
+    dockerfile = (_ROOT / "Dockerfile").read_text()
+
+    deploy_uid = re.search(r"^SVC_UID=(\d+)", deploy, re.M)
+    image_uid = re.search(r"useradd[^\n]*--uid (\d+)", dockerfile)
+    assert deploy_uid and image_uid, "both files must pin an explicit uid"
+    assert deploy_uid.group(1) == image_uid.group(1), (
+        f"deploy chowns to uid {deploy_uid.group(1)} but the image runs as "
+        f"{image_uid.group(1)}; the bind-mounted state tree will be unwritable"
+    )
 
 
 def test_remote_deploy_never_starts_units_without_the_secrets_file() -> None:

@@ -16,6 +16,11 @@ CONFIG_FILE=/etc/iron-spyder/config.yaml
 STATE_DIR=/var/lib/iron-spyder
 COMPOSE_ENV="$APP_DIR/.env"
 SVC_USER=iron-spyder
+# Must match the Dockerfile's `useradd --uid 10001`. A bind mount carries numeric
+# uids, not names, so a host user with the same name but a different uid leaves the
+# containers unable to write the state tree — and the supervisor logs that failure
+# per cycle while continuing to run, so the dashboard silently serves stale state.
+SVC_UID=10001
 
 #: Compose-backed live unit + pull-based update timer.
 SERVICES=(
@@ -53,7 +58,14 @@ fi
 
 log "Service user + directories"
 id -u "$SVC_USER" >/dev/null 2>&1 || \
-    useradd --system --no-create-home --shell /usr/sbin/nologin "$SVC_USER"
+    useradd --system --uid "$SVC_UID" --no-create-home --shell /usr/sbin/nologin "$SVC_USER"
+# A pre-existing account from before the uid was pinned still owns the state tree with
+# the wrong number. Report it rather than leaving the containers silently unable to write.
+have_uid=$(id -u "$SVC_USER")
+if [ "$have_uid" != "$SVC_UID" ]; then
+    log "NOTE: host user $SVC_USER is uid $have_uid, containers run as $SVC_UID;"
+    log "      chowning the state tree numerically so the bind mount works."
+fi
 mkdir -p "$APP_DIR" /etc/iron-spyder "$STATE_DIR" /var/backups/iron-spyder
 
 log "Code -> $DEPLOY_REF"
@@ -74,7 +86,7 @@ log "State tree"
 for sub in "${STATE_DIRS[@]}"; do
     mkdir -p "$STATE_DIR/$sub"
 done
-chown -R "$SVC_USER:$SVC_USER" "$STATE_DIR"
+chown -R "$SVC_UID:$SVC_UID" "$STATE_DIR"
 chmod 0755 "$STATE_DIR"
 find "$STATE_DIR" -type d -exec chmod 0755 {} +
 find "$STATE_DIR/reports" -type f -name '*.json' -exec chmod 0644 {} + 2>/dev/null || true
@@ -92,7 +104,7 @@ cat > "$STATE_DIR/deploy.json" <<JSON
   "runtime": "docker-compose"
 }
 JSON
-chown "$SVC_USER:$SVC_USER" "$STATE_DIR/deploy.json"
+chown "$SVC_UID:$SVC_UID" "$STATE_DIR/deploy.json"
 chmod 0644 "$STATE_DIR/deploy.json"
 
 log "Config template (only if absent)"

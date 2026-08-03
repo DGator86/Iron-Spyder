@@ -11,10 +11,16 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+
+class StateTreeNotWritable(RuntimeError):
+    """The state root exists but the process cannot write to it."""
+
+
 __all__ = [
     "DEFAULT_STATE_ROOT",
     "STATE_DIRS",
     "StatePaths",
+    "StateTreeNotWritable",
     "ensure_state_tree",
     "state_paths",
 ]
@@ -78,9 +84,34 @@ def state_paths(root: str | Path | None = None) -> StatePaths:
 
 
 def ensure_state_tree(root: str | Path | None = None) -> StatePaths:
-    """Create every declared subdirectory. Idempotent."""
+    """Create every declared subdirectory, and prove the tree is writable.
+
+    The writability check is not redundant with ``mkdir``. Under Docker the tree
+    is a bind mount whose ownership comes from the host, and a uid mismatch
+    leaves the directories present but unwritable. The supervisor survives that
+    — ``_publish`` logs the ``OSError`` and carries on — so the daemon reports
+    healthy, keeps trading, and never publishes another ``live_state.json``. The
+    dashboard then serves whatever it last read, indefinitely, with nothing
+    saying the file has stopped moving.
+
+    A tree that cannot be written is a misconfiguration, not a transient fault,
+    and it is worth one syscall at startup to refuse rather than run blind.
+    """
     paths = state_paths(root)
     paths.root.mkdir(parents=True, exist_ok=True)
     for name in STATE_DIRS:
         (paths.root / name).mkdir(parents=True, exist_ok=True)
+
+    probe = paths.root / f".writable-{os.getpid()}"
+    try:
+        probe.touch()
+        probe.unlink()
+    except OSError as exc:
+        raise StateTreeNotWritable(
+            f"{paths.root} is not writable by uid {os.getuid()}: {exc}\n"
+            "Under Docker this is usually a bind-mount uid mismatch — the host "
+            "directory is owned by a different numeric uid than the container "
+            "user. Fix with: chown -R 10001:10001 "
+            f"{paths.root}"
+        ) from exc
     return paths
