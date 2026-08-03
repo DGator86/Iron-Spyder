@@ -29,7 +29,13 @@ export const TooltipContent = React.forwardRef<
 TooltipContent.displayName = "TooltipContent";
 
 /** Small circled "i" that carries a layer or metric explanation. */
-export function InfoDot({ text, className }: { text: string; className?: string }) {
+export function InfoDot({
+  text,
+  className,
+}: {
+  text: string;
+  className?: string;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>

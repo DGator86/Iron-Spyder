@@ -65,7 +65,10 @@ function percentileAbs(field: number[][], p: number): number {
   }
   if (values.length === 0) return 1;
   values.sort((a, b) => a - b);
-  const idx = Math.min(values.length - 1, Math.max(0, Math.floor(values.length * p)));
+  const idx = Math.min(
+    values.length - 1,
+    Math.max(0, Math.floor(values.length * p)),
+  );
   return values[idx] || 1;
 }
 
@@ -99,7 +102,9 @@ export function renderFieldImage(
       ? field.map((column) => {
           const columnPeak = Math.max(...column.filter(Number.isFinite), 0);
           if (columnPeak <= 0) return peak;
-          return Math.exp(mix * Math.log(columnPeak) + (1 - mix) * Math.log(peak));
+          return Math.exp(
+            mix * Math.log(columnPeak) + (1 - mix) * Math.log(peak),
+          );
         })
       : [];
 
@@ -136,7 +141,12 @@ export function renderFieldImage(
   }
 
   ctx.putImageData(image, 0, 0);
-  return { dataUrl: canvas.toDataURL("image/png"), width: nT, height: nP, peak };
+  return {
+    dataUrl: canvas.toDataURL("image/png"),
+    width: nT,
+    height: nP,
+    peak,
+  };
 }
 
 /**

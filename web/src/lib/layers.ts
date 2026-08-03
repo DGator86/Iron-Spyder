@@ -35,7 +35,8 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     id: "iv-surface",
     label: "IV Surface",
     group: "Volatility",
-    description: "Implied volatility across strike and tenor, projected onto the price axis.",
+    description:
+      "Implied volatility across strike and tenor, projected onto the price axis.",
     encoding: { kind: "field", color: "#E879F9" },
     heavy: true,
     defaultOpacity: 0.5,
@@ -72,7 +73,8 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     id: "call-oi",
     label: "Call Open Interest",
     group: "Open Interest & Volume",
-    description: "Call open interest by strike, drawn as a right-margin profile.",
+    description:
+      "Call open interest by strike, drawn as a right-margin profile.",
     encoding: { kind: "contour", color: "#34D399" },
     defaultOpacity: 0.8,
   },
@@ -80,7 +82,8 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     id: "put-oi",
     label: "Put Open Interest",
     group: "Open Interest & Volume",
-    description: "Put open interest by strike, drawn as a right-margin profile.",
+    description:
+      "Put open interest by strike, drawn as a right-margin profile.",
     encoding: { kind: "contour", color: "#F87171" },
     defaultOpacity: 0.8,
   },
@@ -96,7 +99,8 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     id: "gex-profile",
     label: "GEX Profile",
     group: "Gamma & Dealer Positioning",
-    description: "Net gamma exposure as a function of spot, drawn in the right margin.",
+    description:
+      "Net gamma exposure as a function of spot, drawn in the right margin.",
     encoding: { kind: "contour", color: "#FBBF24" },
     defaultOpacity: 0.9,
   },
@@ -117,7 +121,8 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     id: "forecast-quantiles",
     label: "Quantile Bands",
     group: "Price & Forecast",
-    description: "5/10/25 – 75/90/95 percentile envelopes, progressively more transparent.",
+    description:
+      "5/10/25 – 75/90/95 percentile envelopes, progressively more transparent.",
     encoding: { kind: "band", color: "#22D3EE" },
     defaultOpacity: 0.55,
   },
@@ -152,7 +157,8 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     id: "simulated-paths",
     label: "Simulated Paths",
     group: "Price & Forecast",
-    description: "A thin sample of Monte Carlo paths drawn from the forecast distribution.",
+    description:
+      "A thin sample of Monte Carlo paths drawn from the forecast distribution.",
     encoding: { kind: "line", color: "#22D3EE" },
     heavy: true,
     defaultOpacity: 0.35,
@@ -161,7 +167,8 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     id: "forecast-median",
     label: "Median Path",
     group: "Price & Forecast",
-    description: "The 50th percentile of the forecast distribution through time.",
+    description:
+      "The 50th percentile of the forecast distribution through time.",
     encoding: { kind: "line", color: "#22D3EE" },
     defaultOpacity: 1,
   },
@@ -169,7 +176,8 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     id: "forecast-mode",
     label: "Mode Path",
     group: "Price & Forecast",
-    description: "The highest-density price at each forecast step — often pinned to a strike.",
+    description:
+      "The highest-density price at each forecast step — often pinned to a strike.",
     encoding: { kind: "line", color: "#A5F3FC", dash: true },
     defaultOpacity: 0.9,
   },
@@ -203,7 +211,8 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     id: "vanna",
     label: "Vanna Exposure",
     group: "Greeks",
-    description: "Sensitivity of delta to implied volatility — drives flows when IV moves.",
+    description:
+      "Sensitivity of delta to implied volatility — drives flows when IV moves.",
     encoding: { kind: "contour", color: "#E879F9" },
     defaultOpacity: 0.7,
   },
@@ -211,7 +220,8 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     id: "charm",
     label: "Charm Exposure",
     group: "Greeks",
-    description: "Delta decay through time — the source of pinning pressure into expiration.",
+    description:
+      "Delta decay through time — the source of pinning pressure into expiration.",
     encoding: { kind: "contour", color: "#FB923C" },
     defaultOpacity: 0.7,
   },
@@ -219,7 +229,8 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     id: "skew",
     label: "Skew",
     group: "Volatility",
-    description: "Put-versus-call implied volatility skew and the resulting risk reversal.",
+    description:
+      "Put-versus-call implied volatility skew and the resulting risk reversal.",
     encoding: { kind: "contour", color: "#C084FC" },
     defaultOpacity: 0.7,
   },
@@ -238,7 +249,8 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     id: "call-wall",
     label: "Call Wall",
     group: "Market Structure",
-    description: "Strike with the largest call gamma concentration — typically resistance.",
+    description:
+      "Strike with the largest call gamma concentration — typically resistance.",
     encoding: { kind: "marker", color: "#34D399", dash: true },
     defaultOpacity: 1,
   },
@@ -246,7 +258,8 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     id: "put-wall",
     label: "Put Wall",
     group: "Market Structure",
-    description: "Strike with the largest put gamma concentration — typically support.",
+    description:
+      "Strike with the largest put gamma concentration — typically support.",
     encoding: { kind: "marker", color: "#F87171", dash: true },
     defaultOpacity: 1,
   },
@@ -335,13 +348,27 @@ export const PRESETS: Preset[] = [
     id: "open-interest",
     label: "Open Interest",
     hint: "Where the contracts actually sit",
-    layers: ["call-oi", "put-oi", "oi-contours", "volume-profile", "spy-price", "call-wall", "put-wall"],
+    layers: [
+      "call-oi",
+      "put-oi",
+      "oi-contours",
+      "volume-profile",
+      "spy-price",
+      "call-wall",
+      "put-wall",
+    ],
   },
   {
     id: "volatility",
     label: "Volatility",
     hint: "IV structure against the forecast",
-    layers: ["iv-surface", "skew", "expected-move", "forecast-density", "spy-price"],
+    layers: [
+      "iv-surface",
+      "skew",
+      "expected-move",
+      "forecast-density",
+      "spy-price",
+    ],
   },
   {
     id: "dealer-flow",
@@ -367,7 +394,15 @@ export const PRESETS: Preset[] = [
     id: "pinning",
     label: "Pinning",
     hint: "Charm, concentration, and the magnet strike",
-    layers: ["gex-heatmap", "call-oi", "put-oi", "charm", "forecast-mode", "spy-price", "strategy-payoff"],
+    layers: [
+      "gex-heatmap",
+      "call-oi",
+      "put-oi",
+      "charm",
+      "forecast-mode",
+      "spy-price",
+      "strategy-payoff",
+    ],
   },
   {
     id: "range",
@@ -400,7 +435,13 @@ export const PRESETS: Preset[] = [
     id: "clean",
     label: "Clean View",
     hint: "Price, field, median, walls — nothing else",
-    layers: ["spy-price", "forecast-density", "forecast-median", "call-wall", "put-wall"],
+    layers: [
+      "spy-price",
+      "forecast-density",
+      "forecast-median",
+      "call-wall",
+      "put-wall",
+    ],
   },
 ];
 

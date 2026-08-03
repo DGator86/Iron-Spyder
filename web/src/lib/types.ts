@@ -175,7 +175,11 @@ export interface ForecastChartPayload {
   modelAgreement: number;
   dataQuality: number;
   /** Vertical rules the canvas must draw: close, expiry, forecast boundary. */
-  markers: Array<{ time: string; label: string; kind: "now" | "close" | "expiry" }>;
+  markers: Array<{
+    time: string;
+    label: string;
+    kind: "now" | "close" | "expiry";
+  }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -262,27 +266,40 @@ export interface SystemPayload {
   killSwitch: boolean;
   killSwitchReasons: string[];
   spot: number;
-  change: number;
-  changePercent: number;
-  vwap: number;
-  ivRank: number;
+  /**
+   * Fields the engine cannot currently source are `null`, never `0`.
+   *
+   * A zero here is not "unknown", it is a claim: `dailyLossLimit: 0` renders as
+   * "$0.00 limit" and reads as a hard stop at no loss at all, and `change: 0`
+   * reads as an unchanged tape. The UI renders `null` as an em dash, so a
+   * missing feed looks missing. Same rule as the option chain, which drops a
+   * contract rather than emit `impliedVolatility: 0`.
+   *
+   * Currently null on the live path: change/changePercent and vwap (the engine
+   * exposes no session open, previous close, or VWAP), ivRank (no IV history),
+   * and the risk limits (`/performance` reports state, not configured bounds).
+   */
+  change: number | null;
+  changePercent: number | null;
+  vwap: number | null;
+  ivRank: number | null;
   atmIv: number;
   realizedVol: number;
   dte: string;
   serverTime: string;
-  equity: number;
-  dailyPnl: number;
-  dailyPnlPercent: number;
-  openRisk: number;
-  buyingPower: number;
-  dailyLossLimit: number;
-  maxLossPerTrade: number;
+  equity: number | null;
+  dailyPnl: number | null;
+  dailyPnlPercent: number | null;
+  openRisk: number | null;
+  buyingPower: number | null;
+  dailyLossLimit: number | null;
+  maxLossPerTrade: number | null;
   openPositions: number;
-  maxOpenPositions: number;
+  maxOpenPositions: number | null;
   dataQuality: number;
   modelConfidence: number;
   netGex: number;
-  gexSlope: number;
+  gexSlope: number | null;
   dexTrend: number;
   vannaExposure: number;
   charmExposure: number;

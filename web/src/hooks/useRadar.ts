@@ -31,7 +31,10 @@ export function useRadar() {
         expiration,
         replayOffset: String(replayOffset),
       });
-      const res = await fetch(`/api/chart?${params}`, { signal, cache: "no-store" });
+      const res = await fetch(`/api/chart?${params}`, {
+        signal,
+        cache: "no-store",
+      });
       if (!res.ok) throw new Error(`radar request failed: ${res.status}`);
       return (await res.json()) as RadarResponse;
     },

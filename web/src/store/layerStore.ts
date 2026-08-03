@@ -27,7 +27,11 @@ interface LayerStore {
   setEnabled: (id: LayerId, enabled: boolean) => void;
   setOpacity: (id: LayerId, opacity: number) => void;
   setGlobalOpacity: (opacity: number) => void;
-  setSetting: (id: LayerId, key: string, value: string | number | boolean) => void;
+  setSetting: (
+    id: LayerId,
+    key: string,
+    value: string | number | boolean,
+  ) => void;
   move: (id: LayerId, direction: "up" | "down") => void;
   applyPreset: (presetId: string) => void;
   resetLayer: (id: LayerId) => void;
@@ -45,11 +49,16 @@ export const useLayerStore = create<LayerStore>((set, get) => ({
 
   toggle: (id) =>
     set((s) => ({
-      layers: { ...s.layers, [id]: { ...s.layers[id], enabled: !s.layers[id].enabled } },
+      layers: {
+        ...s.layers,
+        [id]: { ...s.layers[id], enabled: !s.layers[id].enabled },
+      },
     })),
 
   setEnabled: (id, enabled) =>
-    set((s) => ({ layers: { ...s.layers, [id]: { ...s.layers[id], enabled } } })),
+    set((s) => ({
+      layers: { ...s.layers, [id]: { ...s.layers[id], enabled } },
+    })),
 
   setOpacity: (id, opacity) =>
     set((s) => ({
@@ -59,13 +68,17 @@ export const useLayerStore = create<LayerStore>((set, get) => ({
       },
     })),
 
-  setGlobalOpacity: (opacity) => set({ globalOpacity: Math.min(1, Math.max(0, opacity)) }),
+  setGlobalOpacity: (opacity) =>
+    set({ globalOpacity: Math.min(1, Math.max(0, opacity)) }),
 
   setSetting: (id, key, value) =>
     set((s) => ({
       layers: {
         ...s.layers,
-        [id]: { ...s.layers[id], settings: { ...s.layers[id].settings, [key]: value } },
+        [id]: {
+          ...s.layers[id],
+          settings: { ...s.layers[id].settings, [key]: value },
+        },
       },
     })),
 
@@ -90,7 +103,10 @@ export const useLayerStore = create<LayerStore>((set, get) => ({
       if (!preset) return s;
       const layers = { ...s.layers };
       for (const meta of LAYER_CATALOGUE) {
-        layers[meta.id] = { ...layers[meta.id], enabled: preset.layers.includes(meta.id) };
+        layers[meta.id] = {
+          ...layers[meta.id],
+          enabled: preset.layers.includes(meta.id),
+        };
       }
       return { layers };
     }),

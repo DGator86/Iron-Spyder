@@ -11,7 +11,9 @@ import { cn } from "@/lib/utils";
  */
 export const Switch = React.forwardRef<
   React.ElementRef<typeof SwitchPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof SwitchPrimitive.Root> & { accent?: string }
+  React.ComponentPropsWithoutRef<typeof SwitchPrimitive.Root> & {
+    accent?: string;
+  }
 >(({ className, accent, checked, style, ...props }, ref) => (
   <SwitchPrimitive.Root
     ref={ref}

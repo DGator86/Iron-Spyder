@@ -28,14 +28,18 @@ export function payoffAt(candidate: StrategyCandidate, s: number): number {
   let intrinsic = 0;
   for (const leg of candidate.legs) {
     const value =
-      leg.right === "call" ? Math.max(0, s - leg.strike) : Math.max(0, leg.strike - s);
+      leg.right === "call"
+        ? Math.max(0, s - leg.strike)
+        : Math.max(0, leg.strike - s);
     intrinsic += leg.quantity * value;
   }
   const net = candidate.isCredit ? candidate.netPrice : -candidate.netPrice;
   return intrinsic * 100 + net;
 }
 
-export function strategyGeometry(candidate: StrategyCandidate): StrategyGeometry {
+export function strategyGeometry(
+  candidate: StrategyCandidate,
+): StrategyGeometry {
   const strikes = candidate.legs.map((l) => l.strike);
   if (strikes.length === 0) {
     return {
@@ -81,8 +85,12 @@ export function strategyGeometry(candidate: StrategyCandidate): StrategyGeometry
     profitZones,
     lossZones,
     breakevens: breakevens.length > 0 ? breakevens : candidate.breakevens,
-    shortStrikes: unique(candidate.legs.filter((l) => l.quantity < 0).map((l) => l.strike)),
-    longStrikes: unique(candidate.legs.filter((l) => l.quantity > 0).map((l) => l.strike)),
+    shortStrikes: unique(
+      candidate.legs.filter((l) => l.quantity < 0).map((l) => l.strike),
+    ),
+    longStrikes: unique(
+      candidate.legs.filter((l) => l.quantity > 0).map((l) => l.strike),
+    ),
     computedMaxProfit: Math.round(Math.max(...payoffs)),
     computedMaxLoss: Math.round(Math.abs(Math.min(...payoffs))),
     curve,
@@ -104,7 +112,8 @@ function extractZones(
       start = null;
     }
   }
-  if (start !== null) zones.push([round2(start), round2(curve[curve.length - 1].price)]);
+  if (start !== null)
+    zones.push([round2(start), round2(curve[curve.length - 1].price)]);
   return zones;
 }
 

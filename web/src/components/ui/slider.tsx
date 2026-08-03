@@ -6,7 +6,9 @@ import { cn } from "@/lib/utils";
 
 export const Slider = React.forwardRef<
   React.ElementRef<typeof SliderPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root> & { accent?: string }
+  React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root> & {
+    accent?: string;
+  }
 >(({ className, accent, ...props }, ref) => (
   <SliderPrimitive.Root
     ref={ref}

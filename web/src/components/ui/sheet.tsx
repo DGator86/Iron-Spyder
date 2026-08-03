@@ -35,7 +35,9 @@ export const SheetContent = React.forwardRef<
       {...props}
     >
       <div className="flex shrink-0 items-center justify-between border-b border-line px-3 py-2.5">
-        <DialogPrimitive.Title className="panel-title">{title}</DialogPrimitive.Title>
+        <DialogPrimitive.Title className="panel-title">
+          {title}
+        </DialogPrimitive.Title>
         <DialogPrimitive.Close
           className="rounded p-1 text-ink-mute transition-colors hover:bg-raised hover:text-ink"
           aria-label="Close"

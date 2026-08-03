@@ -3,7 +3,7 @@
 import { AlertOctagon, Settings, Wifi, WifiOff } from "lucide-react";
 import { Badge, Button } from "@/components/ui/primitives";
 import type { SystemPayload } from "@/lib/types";
-import { cn, price, signedPct } from "@/lib/utils";
+import { cn, NA, orNA, price, signedPct } from "@/lib/utils";
 
 /**
  * Instrument header. Everything here is session-constant or slow-moving —
@@ -21,7 +21,9 @@ export function TopBar({
   degradedReason?: string;
   className?: string;
 }) {
-  const up = system.change >= 0;
+  // No change feed means no direction to colour by; stay neutral rather than
+  // painting the tape green because null failed a `< 0` test.
+  const up = system.change === null ? null : system.change >= 0;
 
   return (
     <header
@@ -43,7 +45,9 @@ export function TopBar({
           </svg>
         </div>
         <div className="leading-none">
-          <div className="text-sm font-bold tracking-wide text-ink">SPY-DER</div>
+          <div className="text-sm font-bold tracking-wide text-ink">
+            SPY-DER
+          </div>
           <div className="text-[9px] uppercase tracking-[0.14em] text-ink-mute">
             Defined Risk Option Intelligence
           </div>
@@ -78,19 +82,38 @@ export function TopBar({
       ) : null}
 
       <div className="flex shrink-0 items-baseline gap-2 border-l border-line pl-4">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-dim">SPY</span>
-        <span className={cn("tnum text-xl font-bold", up ? "text-bull" : "text-bear")}>
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-dim">
+          SPY
+        </span>
+        <span
+          className={cn(
+            "tnum text-xl font-bold",
+            up === null ? "text-ink" : up ? "text-bull" : "text-bear",
+          )}
+        >
           {price(system.spot)}
         </span>
-        <span className={cn("tnum text-[11px]", up ? "text-bull" : "text-bear")}>
-          {system.change >= 0 ? "+" : ""}
-          {system.change.toFixed(2)} ({signedPct(system.changePercent)})
+        <span
+          className={cn(
+            "tnum text-[11px]",
+            up === null ? "text-ink-mute" : up ? "text-bull" : "text-bear",
+          )}
+        >
+          {system.change === null
+            ? NA
+            : `${system.change >= 0 ? "+" : ""}${system.change.toFixed(2)} (${orNA(
+                system.changePercent,
+                (v) => signedPct(v),
+              )})`}
         </span>
       </div>
 
       <div className="hidden min-w-0 flex-1 items-center gap-4 overflow-x-auto xl:flex">
-        <HeaderStat label="VWAP" value={price(system.vwap)} />
-        <HeaderStat label="IVR" value={`${system.ivRank.toFixed(1)}%`} />
+        <HeaderStat label="VWAP" value={orNA(system.vwap, price)} />
+        <HeaderStat
+          label="IVR"
+          value={orNA(system.ivRank, (v) => `${v.toFixed(1)}%`)}
+        />
         <HeaderStat label="IV ATM" value={system.atmIv.toFixed(1)} />
         <HeaderStat label={`HV`} value={system.realizedVol.toFixed(1)} />
         <HeaderStat label="DTE" value={system.dte} />
@@ -110,7 +133,10 @@ export function TopBar({
           }
         >
           <AlertOctagon
-            className={cn("h-3 w-3", system.killSwitch ? "text-bear" : "text-ink-mute")}
+            className={cn(
+              "h-3 w-3",
+              system.killSwitch ? "text-bear" : "text-ink-mute",
+            )}
           />
           <span
             className={cn(
@@ -122,7 +148,10 @@ export function TopBar({
           </span>
         </div>
 
-        <div className="flex items-center gap-1" title={system.connected ? "Connected" : "Disconnected"}>
+        <div
+          className="flex items-center gap-1"
+          title={system.connected ? "Connected" : "Disconnected"}
+        >
           {system.connected ? (
             <Wifi className="h-3.5 w-3.5 text-live" />
           ) : (
@@ -141,7 +170,9 @@ export function TopBar({
 function HeaderStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex shrink-0 items-baseline gap-1.5">
-      <span className="text-[10px] uppercase tracking-wider text-ink-mute">{label}</span>
+      <span className="text-[10px] uppercase tracking-wider text-ink-mute">
+        {label}
+      </span>
       <span className="tnum text-[12px] font-medium text-ink">{value}</span>
     </div>
   );

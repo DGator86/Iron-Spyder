@@ -12,7 +12,11 @@
  * market observation.
  */
 
-import { buildDensitySurface, smoothField, type HorizonQuantiles } from "./density";
+import {
+  buildDensitySurface,
+  smoothField,
+  type HorizonQuantiles,
+} from "./density";
 import { strategyGeometry } from "./payoff";
 import type {
   ForecastChartPayload,
@@ -104,22 +108,43 @@ const TAUS = [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99];
 
 /** Inverse standard normal (Acklam). Used to shape the synthetic quantiles. */
 function probit(p: number): number {
-  const a = [-39.6968302866538, 220.946098424521, -275.928510446969, 138.357751867269, -30.6647980661472, 2.50662827745924];
-  const b = [-54.4760987982241, 161.585836858041, -155.698979859887, 66.8013118877197, -13.2806815528857];
-  const c = [-0.00778489400243029, -0.322396458041136, -2.40075827716184, -2.54973253934373, 4.37466414146497, 2.93816398269878];
-  const d = [0.00778469570904146, 0.32246712907004, 2.445134137143, 3.75440866190742];
+  const a = [
+    -39.6968302866538, 220.946098424521, -275.928510446969, 138.357751867269,
+    -30.6647980661472, 2.50662827745924,
+  ];
+  const b = [
+    -54.4760987982241, 161.585836858041, -155.698979859887, 66.8013118877197,
+    -13.2806815528857,
+  ];
+  const c = [
+    -0.00778489400243029, -0.322396458041136, -2.40075827716184,
+    -2.54973253934373, 4.37466414146497, 2.93816398269878,
+  ];
+  const d = [
+    0.00778469570904146, 0.32246712907004, 2.445134137143, 3.75440866190742,
+  ];
   const pl = 0.02425;
   if (p < pl) {
     const q = Math.sqrt(-2 * Math.log(p));
-    return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+    return (
+      (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+    );
   }
   if (p > 1 - pl) {
     const q = Math.sqrt(-2 * Math.log(1 - p));
-    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+    return (
+      -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+    );
   }
   const q = p - 0.5;
   const r = q * q;
-  return ((((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q) / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+  return (
+    ((((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) *
+      q) /
+    (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
+  );
 }
 
 /**
@@ -130,7 +155,12 @@ function probit(p: number): number {
  *  - mean reversion pulls the median toward the pin strike as time grows
  *  - the wall between spot and each tail compresses that tail (dealers defend)
  */
-function horizonQuantiles(minutes: number, spot: number, atmIv: number, seed: number): HorizonQuantiles {
+function horizonQuantiles(
+  minutes: number,
+  spot: number,
+  atmIv: number,
+  seed: number,
+): HorizonQuantiles {
   const rand = mulberry32(seed + Math.round(minutes));
   const years = minutes / MINUTES_PER_TRADING_YEAR;
   const sigma = atmIv * Math.sqrt(Math.max(years, 1e-6));
@@ -223,7 +253,10 @@ export function generateSnapshot(opts: MockOptions): RadarSnapshot {
     vwapNum += value * volume;
     vwapDen += volume;
     historicalPrice.push({ time: clockLabel(minute), value: round2(value) });
-    historicalVwap.push({ time: clockLabel(minute), value: round2(vwapNum / vwapDen) });
+    historicalVwap.push({
+      time: clockLabel(minute),
+      value: round2(vwapNum / vwapDen),
+    });
   }
   const vwap = round2(vwapNum / vwapDen);
 
@@ -231,7 +264,8 @@ export function generateSnapshot(opts: MockOptions): RadarSnapshot {
   // The axis must always contain the structural levels — a canvas that crops the
   // call wall out of frame cannot answer "where is resistance", which is the
   // whole point of the surface.
-  const diffusionSpan = atmIv * SPOT * Math.sqrt(horizonMinutes / MINUTES_PER_TRADING_YEAR) * 3.2;
+  const diffusionSpan =
+    atmIv * SPOT * Math.sqrt(horizonMinutes / MINUTES_PER_TRADING_YEAR) * 3.2;
   const halfSpan = Math.max(
     6,
     diffusionSpan,
@@ -250,7 +284,8 @@ export function generateSnapshot(opts: MockOptions): RadarSnapshot {
   const timeAxis: string[] = [];
   const minutesAxis: number[] = [];
   for (let i = 0; i < TIME_COLUMNS; i += 1) {
-    const minute = windowStart + ((windowEnd - windowStart) * i) / (TIME_COLUMNS - 1);
+    const minute =
+      windowStart + ((windowEnd - windowStart) * i) / (TIME_COLUMNS - 1);
     timeAxis.push(clockLabel(minute));
     minutesAxis.push(minute - nowMinute);
   }
@@ -260,7 +295,8 @@ export function generateSnapshot(opts: MockOptions): RadarSnapshot {
   const horizons: HorizonQuantiles[] = [5, 15, 30, 60, 120, 240, 390]
     .filter((m) => m <= Math.max(horizonMinutes, 60) * 2.5)
     .map((m) => horizonQuantiles(m, SPOT, atmIv, minuteSeed));
-  if (horizons.length === 0) horizons.push(horizonQuantiles(horizonMinutes, SPOT, atmIv, minuteSeed));
+  if (horizons.length === 0)
+    horizons.push(horizonQuantiles(horizonMinutes, SPOT, atmIv, minuteSeed));
 
   const built = buildDensitySurface(horizons, minutesAxis, priceAxis, SPOT);
   const density = smoothField(built.density, 2);
@@ -281,7 +317,8 @@ export function generateSnapshot(opts: MockOptions): RadarSnapshot {
     for (let p = 0; p < PRICE_ROWS; p += arrowPriceStride) {
       const price = priceAxis[p];
       const g = gexAt(price);
-      const toward = g >= 0 ? Math.sign(GAMMA_FLIP - price) : Math.sign(price - GAMMA_FLIP);
+      const toward =
+        g >= 0 ? Math.sign(GAMMA_FLIP - price) : Math.sign(price - GAMMA_FLIP);
       const strength = Math.min(1, Math.abs(g) / 2.4);
       vectors.push({
         timeIndex: t,
@@ -296,7 +333,11 @@ export function generateSnapshot(opts: MockOptions): RadarSnapshot {
   // ---- Strike ladder ----------------------------------------------------
   const strikes: StrikeRow[] = [];
   const lastGrid = horizons[horizons.length - 1].grid;
-  for (let strike = Math.ceil(priceLow); strike <= Math.floor(priceHigh); strike += 1) {
+  for (
+    let strike = Math.ceil(priceLow);
+    strike <= Math.floor(priceHigh);
+    strike += 1
+  ) {
     if (strike % 2 !== 0 && Math.abs(strike - SPOT) > 6) continue;
     const distance = Math.abs(strike - SPOT);
     const callBias = strike > SPOT ? 1.6 : 0.6;
@@ -330,15 +371,23 @@ export function generateSnapshot(opts: MockOptions): RadarSnapshot {
       const stepMinutes = (windowEnd - windowStart) / (TIME_COLUMNS - 1);
       const sigma = atmIv * Math.sqrt(stepMinutes / MINUTES_PER_TRADING_YEAR);
       const pinDrift = (PIN_STRIKE - value) * 0.006;
-      value = value * Math.exp(sigma * gauss(pathRand) - 0.5 * sigma * sigma) + pinDrift;
+      value =
+        value * Math.exp(sigma * gauss(pathRand) - 0.5 * sigma * sigma) +
+        pinDrift;
       path.push(round2(value));
     }
     simulatedPaths.push(path);
   }
 
-  const sessionHigh = round2(Math.max(...historicalPrice.map((p) => p.value)) + 0.4);
-  const sessionLow = round2(Math.min(...historicalPrice.map((p) => p.value)) - 0.3);
-  const expectedMove = round2(SPOT * atmIv * Math.sqrt(horizonMinutes / MINUTES_PER_TRADING_YEAR));
+  const sessionHigh = round2(
+    Math.max(...historicalPrice.map((p) => p.value)) + 0.4,
+  );
+  const sessionLow = round2(
+    Math.min(...historicalPrice.map((p) => p.value)) - 0.3,
+  );
+  const expectedMove = round2(
+    SPOT * atmIv * Math.sqrt(horizonMinutes / MINUTES_PER_TRADING_YEAR),
+  );
 
   const chart: ForecastChartPayload = {
     timestamp: now.toISOString(),
@@ -347,7 +396,8 @@ export function generateSnapshot(opts: MockOptions): RadarSnapshot {
     expiration: opts.expiration,
     timeAxis,
     priceAxis: priceAxis.map(round2),
-    forecastStartIndex: forecastStartIndex < 0 ? TIME_COLUMNS - 1 : forecastStartIndex,
+    forecastStartIndex:
+      forecastStartIndex < 0 ? TIME_COLUMNS - 1 : forecastStartIndex,
     historicalPrice,
     historicalVwap,
     forecastDensity: density,
@@ -379,7 +429,10 @@ export function generateSnapshot(opts: MockOptions): RadarSnapshot {
     vectors,
     contours: [],
     strikes,
-    gexProfile: priceAxis.map((p) => ({ price: round2(p), gex: round2(gexAt(p)) })),
+    gexProfile: priceAxis.map((p) => ({
+      price: round2(p),
+      gex: round2(gexAt(p)),
+    })),
     confidence: 0.67,
     modelAgreement: 0.76,
     dataQuality: 0.99,
@@ -387,7 +440,13 @@ export function generateSnapshot(opts: MockOptions): RadarSnapshot {
       { time: clockLabel(nowMinute), label: "NOW", kind: "now" },
       { time: clockLabel(SESSION_CLOSE), label: "CLOSE", kind: "close" },
       ...(opts.expiration === "0DTE"
-        ? [{ time: clockLabel(SESSION_CLOSE), label: "EXPIRY", kind: "expiry" as const }]
+        ? [
+            {
+              time: clockLabel(SESSION_CLOSE),
+              label: "EXPIRY",
+              kind: "expiry" as const,
+            },
+          ]
         : []),
     ],
   };
@@ -496,7 +555,12 @@ const STRATEGY_SPECS: StrategySpec[] = [
   {
     family: "IronCondor",
     label: "Iron Condor",
-    legs: [[520, "put", 1], [525, "put", -1], [538, "call", -1], [543, "call", 1]],
+    legs: [
+      [520, "put", 1],
+      [525, "put", -1],
+      [538, "call", -1],
+      [543, "call", 1],
+    ],
     net: 186,
     pop: 0.64,
     ev: 58,
@@ -508,7 +572,10 @@ const STRATEGY_SPECS: StrategySpec[] = [
   {
     family: "BullPutCreditSpread",
     label: "Put Credit Spread",
-    legs: [[522, "put", 1], [524, "put", -1]],
+    legs: [
+      [522, "put", 1],
+      [524, "put", -1],
+    ],
     net: 92,
     pop: 0.78,
     ev: 41,
@@ -520,7 +587,11 @@ const STRATEGY_SPECS: StrategySpec[] = [
   {
     family: "BrokenWingPutButterfly",
     label: "Broken Wing Butterfly",
-    legs: [[522, "put", 1], [530, "put", -2], [534, "put", 1]],
+    legs: [
+      [522, "put", 1],
+      [530, "put", -2],
+      [534, "put", 1],
+    ],
     net: 164,
     pop: 0.58,
     ev: 45,
@@ -532,7 +603,12 @@ const STRATEGY_SPECS: StrategySpec[] = [
   {
     family: "IronButterfly",
     label: "Iron Butterfly",
-    legs: [[527, "put", 1], [532, "put", -1], [532, "call", -1], [537, "call", 1]],
+    legs: [
+      [527, "put", 1],
+      [532, "put", -1],
+      [532, "call", -1],
+      [537, "call", 1],
+    ],
     net: 142,
     pop: 0.62,
     ev: 32,
@@ -544,7 +620,10 @@ const STRATEGY_SPECS: StrategySpec[] = [
   {
     family: "BearCallCreditSpread",
     label: "Call Credit Spread",
-    legs: [[538, "call", -1], [540, "call", 1]],
+    legs: [
+      [538, "call", -1],
+      [540, "call", 1],
+    ],
     net: 88,
     pop: 0.74,
     ev: 29,
@@ -556,7 +635,10 @@ const STRATEGY_SPECS: StrategySpec[] = [
   {
     family: "LongStrangle",
     label: "Long Strangle",
-    legs: [[527, "put", 1], [536, "call", 1]],
+    legs: [
+      [527, "put", 1],
+      [536, "call", 1],
+    ],
     net: -312,
     pop: 0.36,
     ev: 14,
@@ -568,7 +650,10 @@ const STRATEGY_SPECS: StrategySpec[] = [
   {
     family: "BullCallDebitSpread",
     label: "Bull Call Spread",
-    legs: [[531, "call", 1], [534, "call", -1]],
+    legs: [
+      [531, "call", 1],
+      [534, "call", -1],
+    ],
     net: -210,
     pop: 0.55,
     ev: 11,
@@ -642,7 +727,8 @@ function clamp01(v: number): number {
 function cdf(grid: Array<[number, number]>, price: number): number {
   const byPrice = [...grid].sort((a, b) => a[1] - b[1]);
   if (price <= byPrice[0][1]) return byPrice[0][0];
-  if (price >= byPrice[byPrice.length - 1][1]) return byPrice[byPrice.length - 1][0];
+  if (price >= byPrice[byPrice.length - 1][1])
+    return byPrice[byPrice.length - 1][0];
   for (let i = 0; i < byPrice.length - 1; i += 1) {
     const [t0, v0] = byPrice[i];
     const [t1, v1] = byPrice[i + 1];
@@ -654,7 +740,11 @@ function cdf(grid: Array<[number, number]>, price: number): number {
   return 1;
 }
 
-function tailMass(grid: Array<[number, number]>, level: number, spot: number): number {
+function tailMass(
+  grid: Array<[number, number]>,
+  level: number,
+  spot: number,
+): number {
   const c = cdf(grid, level);
   return level >= spot ? 1 - c : c;
 }
