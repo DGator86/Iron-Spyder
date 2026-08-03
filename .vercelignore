@@ -1,0 +1,23 @@
+# Vercel builds the Next.js radar in web/ and nothing else.
+#
+# Without this, Vercel scans the repo root, finds pyproject.toml, and offers to
+# deploy spy_der/app/api.py as a serverless FastAPI function. That app must
+# never be deployed here: it exposes unauthenticated mutating routes, including
+# POST /risk/kill-switch?enabled=false, which would put a public reset for a
+# latched kill switch on the internet. It is also stateful by design — the
+# pipeline carries the HMM belief, the flow and wall trackers and the open book
+# — so a serverless runtime would discard all of it on every cold start.
+#
+# The engine belongs on the dedicated CPU VPS behind loopback. See
+# deploy/CPU_VPS.md.
+
+spy_der/
+scripts/
+tests/
+deploy/
+docs/
+pyproject.toml
+docker-compose*.yml
+Dockerfile*
+*.db
+.github/
