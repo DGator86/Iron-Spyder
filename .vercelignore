@@ -1,0 +1,31 @@
+# Guard, not a build configuration.
+#
+# The deployable app is the Next.js radar in web/, and the mechanism that
+# selects it is the Vercel project's Root Directory setting (set it to `web`).
+# See web/README.md.
+#
+# This file exists for the state where that setting is missing. With the repo
+# root as the project root, Vercel scans it, finds pyproject.toml, and offers to
+# deploy spy_der/app/api.py as a serverless FastAPI function. That must never
+# happen: the app exposes unauthenticated mutating routes, including
+# POST /risk/kill-switch?enabled=false, which would publish a public reset for a
+# latched kill switch. It is also stateful by design — the pipeline carries the
+# HMM belief, the flow and wall trackers and the open book — so a serverless
+# runtime would discard all of it on every cold start, and the SQLite audit
+# store cannot write outside /tmp.
+#
+# Keeping the engine out of the upload means that detection cannot fire even if
+# the Root Directory setting is lost or a new project is imported at the root.
+#
+# The engine belongs on the dedicated CPU VPS behind loopback: deploy/CPU_VPS.md
+
+spy_der/
+scripts/
+tests/
+deploy/
+docs/
+pyproject.toml
+docker-compose*.yml
+Dockerfile*
+*.db
+.github/

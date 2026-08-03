@@ -21,6 +21,7 @@ from pathlib import Path
 from spy_der.config.settings import Mode, load_settings
 from spy_der.data.persistence.audit import AuditStore
 from spy_der.data.providers.base import MarketDataProvider, SyntheticProvider
+from spy_der.data.providers.tradier import TradierError, TradierProvider
 from spy_der.data.synthetic import SCENARIOS, scenario
 from spy_der.execution.paper_broker import PaperBroker, PaperBrokerConfig
 from spy_der.models.forecast_engine import ForecastEngine
@@ -52,6 +53,9 @@ class VpsServiceConfig:
     mode: str = Mode.PAPER.value
     decision_interval: timedelta = timedelta(minutes=5)
     scenario: str = "broad_range"
+    use_tradier: bool = True
+    """Consult ``TRADIER_ACCESS_TOKEN``. Off forces synthetic without a token check."""
+    tradier_expirations: int = 3
     max_cycles: int | None = None
     """Stop after N cycles. Used by tests and dry runs; the unit leaves this unset."""
 
@@ -203,6 +207,55 @@ def build_pipeline(
     )
 
 
+def select_provider(config: VpsServiceConfig) -> MarketDataProvider:
+    """Choose the market-data source, and never lie about which one won.
+
+    The previous behaviour was a bare ``SyntheticProvider(...)`` default, while
+    ``.env.example`` advertised ``TRADIER_ACCESS_TOKEN`` under "supervisor falls
+    back to synthetic". Nothing read the token, so an operator who set a real
+    one got a healthy-looking daemon trading a seeded random walk, with no
+    signal anywhere that its inputs were invented.
+
+    So the rule here is asymmetric on purpose:
+
+    * **No token** — synthetic, logged as such at WARNING. Legitimate for demos
+      and dry runs, but never quiet.
+    * **Token set and working** — live.
+    * **Token set and broken** — raise. Falling back would reproduce exactly the
+      failure this function exists to remove, and it is the worst case of the
+      three: someone deliberately configured a live feed, so a silent downgrade
+      is a downgrade they have no reason to look for.
+    """
+    if not config.use_tradier:
+        return _synthetic(config, reason="disabled by configuration")
+
+    tradier = TradierProvider.from_env(expirations=config.tradier_expirations)
+    if tradier is None:
+        return _synthetic(config, reason="TRADIER_ACCESS_TOKEN is not set")
+
+    try:
+        log.info("market data: %s", tradier.check_connectivity())
+    except TradierError as exc:
+        raise RuntimeError(
+            f"TRADIER_ACCESS_TOKEN is set but the feed is unusable: {exc}\n"
+            "Refusing to start on synthetic data while a live feed is configured — "
+            "every decision would be based on invented prices. Fix the token, or "
+            "unset it to run synthetic deliberately."
+        ) from exc
+    return tradier
+
+
+def _synthetic(config: VpsServiceConfig, *, reason: str) -> MarketDataProvider:
+    log.warning(
+        "MARKET DATA IS SYNTHETIC (%s). Scenario %r is a seeded generator: every "
+        "price, greek, and forecast below is invented and none of it describes "
+        "the real market.",
+        reason,
+        config.scenario,
+    )
+    return SyntheticProvider(spec=scenario(config.scenario), step=config.decision_interval)
+
+
 def build_service(
     config: VpsServiceConfig,
     *,
@@ -213,9 +266,7 @@ def build_service(
 ) -> VpsService:
     paths = ensure_state_tree(config.state_root)
     pipeline = build_pipeline(mode=config.mode, state_root=config.state_root)
-    market = provider or SyntheticProvider(
-        spec=scenario(config.scenario), step=config.decision_interval
-    )
+    market = provider or select_provider(config)
     supervisor = Supervisor(
         pipeline=pipeline,
         provider=market,
@@ -255,6 +306,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scenario", default="broad_range", choices=sorted(SCENARIOS))
     parser.add_argument("--max-cycles", type=int, help="stop after N cycles (dry run)")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="force the synthetic generator even if TRADIER_ACCESS_TOKEN is set",
+    )
+    parser.add_argument(
+        "--check-data",
+        action="store_true",
+        help="report which market-data source would be used, then exit",
+    )
     return parser
 
 
@@ -270,12 +331,34 @@ def main(argv: list[str] | None = None) -> int:
         mode=args.mode,
         decision_interval=timedelta(minutes=args.interval),
         scenario=args.scenario,
+        use_tradier=not args.synthetic,
         max_cycles=args.max_cycles,
     )
+    if args.check_data:
+        return _report_data_source(config)
     service = build_service(config)
     service.supervisor.install_signal_handlers()
     stats = service.run()
     log.info("final: %s", stats.as_dict())
+    return 0
+
+
+def _report_data_source(config: VpsServiceConfig) -> int:
+    """Answer "what is this thing actually reading?" without starting a daemon.
+
+    Worth its own flag because the answer is otherwise only visible in the
+    startup log, and it is the single most consequential fact about a running
+    instance.
+    """
+    try:
+        chosen = select_provider(config)
+    except RuntimeError as exc:
+        log.error("%s", exc)
+        return 1
+    if isinstance(chosen, TradierProvider):
+        log.info("LIVE — %s", chosen.check_connectivity())
+        return 0
+    log.warning("SYNTHETIC — scenario %r; no live market data.", config.scenario)
     return 0
 
 
