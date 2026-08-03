@@ -26,6 +26,7 @@ from spy_der.models.ensemble.combiner import (
     EnsembleWeights,
     assess_confidence,
     blend_state_probabilities,
+    scoped_dealer_agreement,
 )
 from spy_der.models.hidden_state.hmm import HiddenStateFilter, build_transition_matrix
 
@@ -158,6 +159,54 @@ def test_confidence_falls_with_every_degrading_factor():
     ):
         degraded = assess_confidence(replace(base, **{field: value})).adjusted
         assert degraded < reference, field
+
+
+def test_dealer_uncertainty_discounts_in_proportion_to_its_influence():
+    """One uncertain input must not veto conclusions drawn from other evidence.
+
+    ``dealer_agreement`` describes inferred dealer positioning, which is one of
+    four evidence sources in the state blend. Applied raw it gated every
+    decision: a regime identified with 0.75 raw confidence was cut to 0.157 and
+    vetoed by that term alone, even where the edge came from realized
+    volatility sitting below implied — which owes nothing to dealer positioning.
+    """
+    # Purely structural: the discount is the raw statistic, exactly as before.
+    assert scoped_dealer_agreement(0.37, structural_weight=1.0) == pytest.approx(0.37)
+    # Structure contributed nothing: its uncertainty is irrelevant.
+    assert scoped_dealer_agreement(0.37, structural_weight=0.0) == pytest.approx(1.0)
+    # A realistic blend: discounted, but not vetoed.
+    assert scoped_dealer_agreement(0.37, structural_weight=0.35) == pytest.approx(0.7795)
+
+
+def test_dealer_scoping_is_monotone_in_both_arguments():
+    # Worse agreement always discounts more, at any fixed influence.
+    for weight in (0.0, 0.25, 0.5, 1.0):
+        values = [scoped_dealer_agreement(a / 10.0, weight) for a in range(11)]
+        assert all(a <= b for a, b in zip(values[:-1], values[1:], strict=True))
+    # More influence always discounts more, at any fixed disagreement.
+    weights = [scoped_dealer_agreement(0.4, w / 10.0) for w in range(11)]
+    assert all(a >= b for a, b in zip(weights[:-1], weights[1:], strict=True))
+
+
+def test_unanimous_conventions_never_discount():
+    for weight in (0.0, 0.5, 1.0):
+        assert scoped_dealer_agreement(1.0, weight) == pytest.approx(1.0)
+
+
+def test_the_reported_dealer_agreement_is_the_raw_statistic():
+    """The audit trail and dashboard must show what the conventions said."""
+    assessment = assess_confidence(
+        ConfidenceInputs(
+            raw_confidence=0.8,
+            state_probabilities=_states(0.8),
+            previous_state_probabilities=_states(0.8),
+            model_predictions=[0.8, 0.79, 0.81],
+            data_quality=1.0,
+            dealer_agreement=0.37,
+            structural_weight=0.35,
+        )
+    )
+    assert assessment.dealer_agreement == pytest.approx(0.37)
 
 
 def test_confidence_is_bounded():

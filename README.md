@@ -104,19 +104,25 @@ docker compose up -d --build
 ### What the demo shows
 
 ```
-scenario           state              conf    DQ  cands  best family          decision
-strong_pin         StrongPin          0.16  0.93      5  BrokenWingPutButter… NO_TRADE
-broad_range        BroadRange         0.05  0.94      0  —                    NO_TRADE
-bull_breakout      BullBreakout       0.50  0.96      9  LongStraddle         LongStraddle:550
-vol_expansion      VolExpansion       0.29  0.96     19  LongStraddle         LongStraddle:550
-corrupt_quotes     BroadRange         0.00  0.00      0  —                    NO_TRADE
+scenario           state             conf    DQ  cands  best family              EV    util  decision
+strong_pin         StrongPin         0.32  0.93      5  BrokenWingPutButter…  10.45   -6.95  NO_TRADE
+broad_range        BroadRange        0.10  0.94      0  —                      0.00    0.00  NO_TRADE
+bull_breakout      BullBreakout      0.55  0.96      6  LongStraddle          36.55   11.84  LongStraddle:550
+bear_breakdown     BearBreakdown     0.63  0.96     11  LongStraddle          68.26   32.89  LongStraddle:550
+vol_expansion      VolExpansion      0.31  0.96     18  LongStraddle         122.45   22.85  LongStraddle:550
+corrupt_quotes     BroadRange        0.00  0.00      0  —                      0.00    0.00  NO_TRADE
 ```
 
-Most scenarios return no-trade, and that is the correct answer: the synthetic
-chain is priced with the same model the simulator uses, so it is arbitrage-free
-by construction and there is no edge to find. The system acts only where the
-forecast genuinely disagrees with priced volatility — the expansion and breakout
-regimes, where simulated realized volatility exceeds the implied level.
+The system acts where the forecast genuinely disagrees with priced volatility —
+the expansion and breakout regimes, where simulated realized volatility exceeds
+the implied level. Elsewhere it declines, and the two columns show it declining
+for different reasons. `broad_range` produces no candidate at all. `strong_pin`
+produces five, prices the best at **+$10.45** expected value, and still refuses
+it because the risk penalties take utility to **−$6.95** — a positive-EV trade
+rejected on risk-adjusted grounds, which is the behaviour spec 45 asks for.
+
+The degraded-data rows are a separate mechanism: `corrupt_quotes` never reaches
+a forecast, because the data-quality engine fails closed first.
 
 ---
 
@@ -326,13 +332,16 @@ Stated plainly, because they bound what the current numbers mean:
    — a twenty-four-point gap, far beyond anything a real chain offers.
 
    It is also directional. Twelve of the fifteen named scenarios carry
-   *negative* edge, which is a short-premium opportunity, and the system takes
-   none of them. The cause sits upstream of strategy selection: `dealer_agreement`
-   multiplies into the single confidence score that gates all trading, and in
-   quiet regimes the sign conventions disagree (≈0.37 against ≈0.86 in trending
-   ones), so confidence collapses before any short-premium structure is
-   considered. That edge does not depend on dealer positioning, so it is being
-   vetoed by uncertainty about an unrelated input.
+   *negative* edge, a short-premium opportunity, and none is traded. That used
+   to be a veto upstream of strategy selection — `dealer_agreement` multiplied
+   into the single confidence score gating all trading, and in quiet regimes
+   the sign conventions disagree (≈0.37 against ≈0.86 in trending ones), so
+   confidence collapsed before any short-premium structure was considered.
+   Scoping that term to the structural share of the blend fixed it: those
+   candidates are now evaluated, and what declines them is
+   `min_return_on_risk`. A short-premium structure collects a small credit
+   against a much larger maximum loss, so a 0.12 vol edge does not clear a 4%
+   return on risk — an economic judgement rather than a blind spot.
 
    Both facts are asserted in the test suite rather than left as prose, so
    neither can drift silently and an improvement shows up as a failing

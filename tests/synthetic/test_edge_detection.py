@@ -45,10 +45,13 @@ BASE_IV = 0.20
 #:
 #: Recorded from the sweep in ``test_detection_sensitivity_is_recorded``: at a
 #: 0.20 implied vol, nothing is admitted until realized vol reaches roughly
-#: 0.44. Twenty-four vol points is an enormous mispricing — far beyond anything
+#: 0.38. Eighteen vol points is still an enormous mispricing — far beyond what
 #: a real chain offers — so this documents a real limitation rather than a
 #: tuned parameter. Lowering it is an improvement; raising it is a regression.
-DETECTION_THRESHOLD = 0.24
+#:
+#: Was 0.24 before ``dealer_agreement`` was scoped to the structural share of
+#: the blend; that change moved it to 0.18.
+DETECTION_THRESHOLD = 0.18
 
 
 def decide(*, realized_vol: float, atm_iv: float = BASE_IV, name: str = "broad_range"):
@@ -130,24 +133,38 @@ def test_detection_sensitivity_is_recorded():
     )
 
 
-def test_short_volatility_edge_is_not_monetized():
-    """A known gap, asserted so it cannot be forgotten.
+def test_short_volatility_edge_reaches_evaluation_but_not_admission():
+    """Twelve of fifteen scenarios carry negative edge; none is traded.
 
-    Twelve of the fifteen named scenarios carry negative edge — realized
-    volatility below implied — which is a short-premium opportunity. The system
-    takes none of them. The cause is upstream of strategy selection: the
-    dealer-agreement term multiplies into a single confidence score that gates
-    all trading, and in quiet regimes the sign conventions disagree, so
-    confidence collapses before any short-premium structure is considered.
+    The reason has moved, and the distinction matters. It used to be a veto
+    upstream of strategy selection: ``dealer_agreement`` multiplied into the
+    single confidence score gating all trading, and in quiet regimes the sign
+    conventions disagree, so confidence collapsed before any short-premium
+    structure was considered. Scoping that term to the structural share of the
+    blend fixed it — a -0.12 edge now reaches confidence ≈0.33, well clear of
+    the veto, and every candidate is evaluated.
 
-    That edge does not depend on dealer positioning at all, so it is being
-    vetoed by uncertainty about a different input. This test fails the day that
-    is addressed, which is the intended prompt to delete it.
+    What stops them now is ``min_return_on_risk``. A short-premium structure
+    collects a small credit against a much larger maximum loss, so a 0.12 vol
+    edge does not produce a 4% return on risk. That is an economic judgement,
+    not a blind spot: declining a trade whose risk-adjusted return does not
+    clear the hurdle is the system working.
+
+    Asserted so the distinction survives. If short-vol structures start being
+    admitted, the hurdle or the pricing changed and both deserve a look.
     """
     _spec, result = decide(realized_vol=BASE_IV - 0.12)
     optimization = result.optimization
     assert optimization is not None
-    assert not optimization.candidates, (
-        "short-volatility edge is now being monetized — remove this test and "
-        "the note about it in the README"
+    assert result.forecast is not None
+
+    # Past the confidence veto — this is what the dealer scoping bought.
+    assert result.forecast.confidence > 0.20
+    assert optimization.evaluated_count > 0, "candidates should now be evaluated"
+    assert not optimization.candidates, "short-vol structures are being admitted now"
+
+    reasons = [r for _sid, rs in optimization.rejected for r in rs]
+    assert any("return on risk" in r for r in reasons), (
+        "expected the return-on-risk hurdle to be the binding rejection; "
+        f"saw {sorted({' '.join(r.split()[:3]) for r in reasons})}"
     )
