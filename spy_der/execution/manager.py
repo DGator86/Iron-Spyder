@@ -110,10 +110,11 @@ class PositionManager:
             )
 
         max_loss = position.max_loss_per_contract * position.contracts
-        if max_loss > 0.0 and pnl <= -plan.stop_loss_fraction * max_loss:
+        stop = self.stop_threshold(position)
+        if max_loss > 0.0 and pnl <= -stop:
             return signal(
                 ExitReason.RISK_STOP,
-                f"loss {pnl:.2f} beyond {plan.stop_loss_fraction:.0%} of {max_loss:.0f}",
+                f"loss {pnl:.2f} beyond stop {stop:.0f} of max loss {max_loss:.0f}",
             )
 
         max_profit = position.max_profit_per_contract * position.contracts
@@ -134,6 +135,20 @@ class PositionManager:
                 ExitReason.TIME_STOP, f"held {held:.0f} of {plan.max_holding_minutes:.0f} minutes"
             )
         return None
+
+    @staticmethod
+    def stop_threshold(position: Position) -> float:
+        """Total loss, in positive dollars, at which this position stops out.
+
+        ``entry_price`` is the net structure price per share, negative for a
+        credit, so the credit received per contract is ``-entry_price * 100``.
+        """
+        credit_per_contract = max(0.0, -position.entry_price) * CONTRACT_MULTIPLIER
+        per_contract = position.exit_plan.stop_loss_dollars(
+            max_loss=position.max_loss_per_contract,
+            credit_received=credit_per_contract,
+        )
+        return per_contract * position.contracts
 
     def assignment_exposure(self, position: Position, snapshot: MarketSnapshot) -> str | None:
         """Detect a short leg at risk of assignment (spec 30.5)."""

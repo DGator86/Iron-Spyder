@@ -53,34 +53,56 @@ from spy_der.strategies.registry import AdmittedStrategy, StrategyRegistry
 
 MINUTES_PER_YEAR = 365.0 * 24.0 * 60.0
 
-#: Per-family exit defaults (spec section 30).
+@dataclass(frozen=True, slots=True)
+class ExitDefault:
+    """Per-family target and stop (spec section 30).
+
+    ``stop`` is a fraction of maximum loss. ``credit_multiple`` overrides it for
+    structures opened for a credit, expressing the convention those families are
+    actually managed by — "stop at 2x credit received".
+
+    The two denominators are not interchangeable: ``max_loss = width - credit``,
+    so 2x credit on a $5 spread taken for $1.50 is 0.86 of maximum loss, while
+    the same multiple on a $10 spread taken for $1.50 is only 0.35 of it. A
+    single max-loss fraction cannot express the rule across widths, which is why
+    the multiple is carried separately rather than being flattened into ``stop``.
+    """
+
+    target: float
+    stop: float
+    credit_multiple: float | None = None
+
+
 #: Credit structures take profit early because the last increments of a credit
 #: are the slowest and riskiest to collect; long-volatility structures run
 #: further because their whole value is in the tail.
-EXIT_DEFAULTS: dict[StrategyFamily, tuple[float, float]] = {
-    StrategyFamily.BULL_PUT_CREDIT_SPREAD: (0.50, 2.00),
-    StrategyFamily.BEAR_CALL_CREDIT_SPREAD: (0.50, 2.00),
-    StrategyFamily.IRON_CONDOR: (0.50, 1.80),
-    StrategyFamily.ASYMMETRIC_CONDOR: (0.50, 1.80),
-    StrategyFamily.BROKEN_WING_CONDOR: (0.50, 1.80),
-    StrategyFamily.IRON_BUTTERFLY: (0.35, 1.50),
-    StrategyFamily.CALL_BUTTERFLY: (0.55, 0.80),
-    StrategyFamily.PUT_BUTTERFLY: (0.55, 0.80),
-    StrategyFamily.BROKEN_WING_CALL_BUTTERFLY: (0.50, 1.00),
-    StrategyFamily.BROKEN_WING_PUT_BUTTERFLY: (0.50, 1.00),
-    StrategyFamily.BULL_CALL_DEBIT_SPREAD: (0.65, 0.60),
-    StrategyFamily.BEAR_PUT_DEBIT_SPREAD: (0.65, 0.60),
-    StrategyFamily.LONG_STRADDLE: (0.80, 0.50),
-    StrategyFamily.LONG_STRANGLE: (0.80, 0.50),
-    StrategyFamily.CALL_BACKSPREAD: (0.75, 0.60),
-    StrategyFamily.PUT_BACKSPREAD: (0.75, 0.60),
-    StrategyFamily.BULLISH_CALENDAR: (0.45, 0.70),
-    StrategyFamily.BEARISH_CALENDAR: (0.45, 0.70),
-    StrategyFamily.DOUBLE_CALENDAR: (0.45, 0.70),
-    StrategyFamily.BULLISH_DIAGONAL: (0.50, 0.70),
-    StrategyFamily.BEARISH_DIAGONAL: (0.50, 0.70),
+#:
+#: The credit families carry ``stop=1.0`` as the fallback: if such a structure
+#: somehow opens for a debit, the defined maximum loss is the stop.
+EXIT_DEFAULTS: dict[StrategyFamily, ExitDefault] = {
+    StrategyFamily.BULL_PUT_CREDIT_SPREAD: ExitDefault(0.50, 1.00, credit_multiple=2.00),
+    StrategyFamily.BEAR_CALL_CREDIT_SPREAD: ExitDefault(0.50, 1.00, credit_multiple=2.00),
+    StrategyFamily.IRON_CONDOR: ExitDefault(0.50, 1.00, credit_multiple=1.80),
+    StrategyFamily.ASYMMETRIC_CONDOR: ExitDefault(0.50, 1.00, credit_multiple=1.80),
+    StrategyFamily.BROKEN_WING_CONDOR: ExitDefault(0.50, 1.00, credit_multiple=1.80),
+    StrategyFamily.IRON_BUTTERFLY: ExitDefault(0.35, 1.00, credit_multiple=1.50),
+    StrategyFamily.CALL_BUTTERFLY: ExitDefault(0.55, 0.80),
+    StrategyFamily.PUT_BUTTERFLY: ExitDefault(0.55, 0.80),
+    StrategyFamily.BROKEN_WING_CALL_BUTTERFLY: ExitDefault(0.50, 1.00),
+    StrategyFamily.BROKEN_WING_PUT_BUTTERFLY: ExitDefault(0.50, 1.00),
+    StrategyFamily.BULL_CALL_DEBIT_SPREAD: ExitDefault(0.65, 0.60),
+    StrategyFamily.BEAR_PUT_DEBIT_SPREAD: ExitDefault(0.65, 0.60),
+    StrategyFamily.LONG_STRADDLE: ExitDefault(0.80, 0.50),
+    StrategyFamily.LONG_STRANGLE: ExitDefault(0.80, 0.50),
+    StrategyFamily.CALL_BACKSPREAD: ExitDefault(0.75, 0.60),
+    StrategyFamily.PUT_BACKSPREAD: ExitDefault(0.75, 0.60),
+    StrategyFamily.BULLISH_CALENDAR: ExitDefault(0.45, 0.70),
+    StrategyFamily.BEARISH_CALENDAR: ExitDefault(0.45, 0.70),
+    StrategyFamily.DOUBLE_CALENDAR: ExitDefault(0.45, 0.70),
+    StrategyFamily.BULLISH_DIAGONAL: ExitDefault(0.50, 0.70),
+    StrategyFamily.BEARISH_DIAGONAL: ExitDefault(0.50, 0.70),
 }
-DEFAULT_EXIT = (0.55, 0.80)
+DEFAULT_EXIT = ExitDefault(0.55, 0.80)
 
 
 @dataclass
@@ -464,7 +486,7 @@ class StrategyOptimizer:
     def _exit_plan(
         self, strategy: Strategy, features: MarketFeatures, forecast: ForecastBundle
     ) -> ExitPlan:
-        target, stop = EXIT_DEFAULTS.get(strategy.family, DEFAULT_EXIT)
+        defaults = EXIT_DEFAULTS.get(strategy.family, DEFAULT_EXIT)
         seconds_to_expiry = max(
             0.0, (strategy.near_expiry - forecast.timestamp).total_seconds()
         )
@@ -480,12 +502,13 @@ class StrategyOptimizer:
             for state in (MarketState.TRANSITION, MarketState.UNSTABLE)
         )
         return ExitPlan(
-            profit_target_fraction=min(1.0, target),
-            stop_loss_fraction=min(1.0, stop),
+            profit_target_fraction=min(1.0, defaults.target),
+            stop_loss_fraction=min(1.0, defaults.stop),
             max_holding_minutes=holding,
             invalidation_states=invalidation,
             close_before_expiry_minutes=30.0,
             min_forecast_probability=0.25,
+            stop_loss_credit_multiple=defaults.credit_multiple,
         )
 
     @staticmethod

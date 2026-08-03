@@ -131,7 +131,12 @@ def simulate_exits(
 
     minutes = bundle.times * 365.0 * 24.0 * 60.0
     target_level = exit_plan.profit_target_fraction * max(max_profit, 1e-9)
-    stop_level = -exit_plan.stop_loss_fraction * max(max_loss, 1e-9)
+    # Same resolver the position manager uses, so the stop that is priced here
+    # is the stop that will actually be enforced.
+    stop_level = -exit_plan.stop_loss_dollars(
+        max_loss=max(max_loss, 1e-9),
+        credit_received=max(0.0, -entry_per_share) * CONTRACT_MULTIPLIER,
+    )
 
     # Forced-closure step: the earlier of the time stop and the pre-expiry
     # assignment cutoff. Never allow a short leg to run into settlement.

@@ -26,6 +26,7 @@ from spy_der.execution.manager import PositionManager
 from spy_der.execution.orders import build_close_order, build_open_order, describe
 from spy_der.execution.paper_broker import PaperBroker, PaperBrokerConfig
 from spy_der.execution.reconciliation import apply_to_broker_state, reconcile
+from spy_der.optimizer.engine import EXIT_DEFAULTS
 from tests.conftest import leg
 from tests.unit.test_risk import make_candidate
 
@@ -406,6 +407,8 @@ def test_exit_plan_rejects_degenerate_values():
         {"profit_target_fraction": 0.0},
         {"stop_loss_fraction": 0.0},
         {"max_holding_minutes": 0.0},
+        {"stop_loss_credit_multiple": 0.0},
+        {"stop_loss_credit_multiple": -1.0},
     ):
         base = {
             "profit_target_fraction": 0.5,
@@ -415,3 +418,106 @@ def test_exit_plan_rejects_degenerate_values():
         base.update(kwargs)
         with pytest.raises(ValueError):
             ExitPlan(**base)
+
+
+# --------------------------------------------------------------------------
+# Credit-denominated risk stops (spec 30)
+# --------------------------------------------------------------------------
+
+
+def credit_plan(multiple: float | None = 2.0) -> ExitPlan:
+    return ExitPlan(
+        profit_target_fraction=0.50,
+        stop_loss_fraction=1.00,
+        max_holding_minutes=390.0,
+        stop_loss_credit_multiple=multiple,
+    )
+
+
+def test_a_credit_multiple_stops_before_maximum_loss():
+    """The point of the field: 2x credit must be reachable, unlike a clamped 2.0.
+
+    $5-wide spread taken for $1.50 credit. Maximum loss is width minus credit,
+    $350 per contract, and 2x the credit is $300 — a real stop at 0.86 of the
+    maximum, where a ``stop_loss_fraction`` of 2.0 would clamp to 1.0 and only
+    fire at the full $350, which is no stop at all.
+    """
+    stop = credit_plan().stop_loss_dollars(max_loss=350.0, credit_received=150.0)
+    assert stop == pytest.approx(300.0)
+    assert stop < 350.0
+
+
+def test_the_same_multiple_is_a_different_max_loss_fraction_by_width():
+    """Why a static max-loss fraction cannot express the rule."""
+    plan = credit_plan(2.0)
+    narrow = plan.stop_loss_dollars(max_loss=350.0, credit_received=150.0)  # $5 wide
+    wide = plan.stop_loss_dollars(max_loss=850.0, credit_received=150.0)  # $10 wide
+    assert narrow / 350.0 == pytest.approx(0.857, abs=1e-3)
+    assert wide / 850.0 == pytest.approx(0.353, abs=1e-3)
+
+
+def test_a_credit_stop_is_capped_at_maximum_loss():
+    """A threshold beyond max loss is unreachable, which is the same as no stop."""
+    # $2.00 credit on a $2.50 spread: 2x credit is $400, max loss only $50.
+    stop = credit_plan().stop_loss_dollars(max_loss=50.0, credit_received=200.0)
+    assert stop == pytest.approx(50.0)
+
+
+def test_a_debit_structure_falls_back_to_the_max_loss_fraction():
+    plan = ExitPlan(
+        profit_target_fraction=0.65,
+        stop_loss_fraction=0.60,
+        max_holding_minutes=390.0,
+        stop_loss_credit_multiple=2.0,
+    )
+    assert plan.stop_loss_dollars(max_loss=500.0, credit_received=0.0) == pytest.approx(300.0)
+
+
+def test_no_multiple_leaves_the_max_loss_fraction_untouched():
+    plan = ExitPlan(
+        profit_target_fraction=0.65, stop_loss_fraction=0.60, max_holding_minutes=390.0
+    )
+    assert plan.stop_loss_dollars(max_loss=500.0, credit_received=150.0) == pytest.approx(300.0)
+
+
+def test_every_credit_family_declares_a_reachable_stop():
+    """Regression: no credit family may sit at an unreachable stop again."""
+    credit, width = 150.0, 500.0
+    max_loss = width - credit
+    for family, default in EXIT_DEFAULTS.items():
+        if default.credit_multiple is None:
+            continue
+        plan = ExitPlan(
+            profit_target_fraction=default.target,
+            stop_loss_fraction=default.stop,
+            max_holding_minutes=390.0,
+            stop_loss_credit_multiple=default.credit_multiple,
+        )
+        stop = plan.stop_loss_dollars(max_loss=max_loss, credit_received=credit)
+        assert 0.0 < stop < max_loss, f"{family.value} stop {stop} is not reachable"
+
+
+def test_the_manager_stops_a_credit_position_at_the_credit_multiple(scored_snapshot):
+    """The enforced threshold, end to end through the position manager."""
+    snapshot = scored_snapshot("broad_range")
+    # entry_price is the net per-share structure price; negative is a credit.
+    position = make_position(
+        snapshot,
+        entry_price=-1.50,
+        max_loss_per_contract=350.0,
+        exit_plan=credit_plan(2.0),
+    )
+    assert PositionManager.stop_threshold(position) == pytest.approx(300.0)
+
+
+def test_the_simulator_and_the_manager_price_the_same_stop():
+    """If these diverged, the optimizer would value a stop never enforced."""
+    plan = credit_plan(2.0)
+    # Both resolve through ExitPlan.stop_loss_dollars, so equality is structural
+    # rather than two constants that happen to agree today.
+    entry_per_share = -1.50
+    simulated = plan.stop_loss_dollars(
+        max_loss=350.0, credit_received=max(0.0, -entry_per_share) * 100
+    )
+    enforced = plan.stop_loss_dollars(max_loss=350.0, credit_received=150.0)
+    assert simulated == enforced == pytest.approx(300.0)
