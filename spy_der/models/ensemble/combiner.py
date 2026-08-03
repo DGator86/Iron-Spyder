@@ -160,6 +160,14 @@ class ConfidenceInputs:
     dealer_agreement: float
     calibration_quality: float = 1.0
 
+    structural_weight: float = 1.0
+    """Share of the state blend that came from structural evidence.
+
+    Scopes ``dealer_agreement``, which measures uncertainty about *inferred
+    dealer positioning* — one input among four. Defaults to 1.0, which
+    reproduces the unscoped behaviour for any caller that does not supply it.
+    """
+
 
 @dataclass(frozen=True)
 class ConfidenceAssessment:
@@ -189,12 +197,47 @@ class ConfidenceAssessment:
         }
 
 
+def scoped_dealer_agreement(agreement: float, structural_weight: float) -> float:
+    """Discount for dealer uncertainty, in proportion to its influence.
+
+    ``dealer_agreement`` measures whether the sign conventions agree about
+    inferred dealer positioning. That is uncertainty about *one* of the four
+    evidence sources the state blend draws on, but multiplied in raw it gates
+    every decision, including ones structure barely informed.
+
+    The observed consequence: in quiet regimes the conventions split and
+    agreement sits near 0.37, against roughly 0.86 in trending ones. A regime
+    identified with 0.75 raw confidence and 0.94 data quality was reduced to
+    0.157 and vetoed by that term alone — while the edge in those regimes came
+    from realized volatility sitting below implied, which owes nothing to
+    dealer positioning.
+
+    Spec 2.6 requires structural information to be treated as imperfect and
+    never presented as fact. A term that can drive the product to near zero on
+    its own does the opposite: it lets one uncertain inference overrule
+    conclusions drawn from unrelated evidence.
+
+    So the discount scales with how much structure actually drove the blend::
+
+        effective = 1 - w_structural * (1 - agreement)
+
+    With ``w_structural = 1`` this is the unscoped value, so a purely structural
+    decision is gated exactly as before. With ``w_structural = 0`` the dealer
+    read is irrelevant and does not discount at all.
+    """
+    weight = float(np.clip(structural_weight, 0.0, 1.0))
+    return float(np.clip(1.0 - weight * (1.0 - np.clip(agreement, 0.0, 1.0)), 0.0, 1.0))
+
+
 def assess_confidence(inputs: ConfidenceInputs) -> ConfidenceAssessment:
     """``C* = C_raw * Certainty * Stability * (1 - D) * DQ * DealerAgreement``.
 
     Every factor is in ``[0, 1]`` and they multiply, so the result degrades
     fast when several are mediocre. That is the intent: the spec wants low
     confidence to make no-trade more likely, not to be averaged away.
+
+    The ``DealerAgreement`` factor is scoped to the structural share of the
+    blend first — see :func:`scoped_dealer_agreement`.
     """
     from spy_der.domain.forecast import shannon_entropy
 
@@ -203,6 +246,7 @@ def assess_confidence(inputs: ConfidenceInputs) -> ConfidenceAssessment:
         inputs.state_probabilities, inputs.previous_state_probabilities
     )
     disagreement = float(np.clip(dispersion(list(inputs.model_predictions)), 0.0, 1.0))
+    dealer = scoped_dealer_agreement(inputs.dealer_agreement, inputs.structural_weight)
 
     adjusted = (
         float(np.clip(inputs.raw_confidence, 0.0, 1.0))
@@ -210,7 +254,7 @@ def assess_confidence(inputs: ConfidenceInputs) -> ConfidenceAssessment:
         * stability
         * (1.0 - disagreement)
         * float(np.clip(inputs.data_quality, 0.0, 1.0))
-        * float(np.clip(inputs.dealer_agreement, 0.0, 1.0))
+        * dealer
         * float(np.clip(inputs.calibration_quality, 0.0, 1.0))
     )
 
@@ -221,6 +265,8 @@ def assess_confidence(inputs: ConfidenceInputs) -> ConfidenceAssessment:
         stability=stability,
         disagreement=disagreement,
         data_quality=inputs.data_quality,
+        # The raw statistic is reported, not the scoped one: the dashboard and
+        # audit trail should show what the conventions actually said.
         dealer_agreement=inputs.dealer_agreement,
         calibration_quality=inputs.calibration_quality,
         entropy=shannon_entropy(inputs.state_probabilities),

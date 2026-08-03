@@ -114,6 +114,7 @@ class ForecastEngine:
                 data_quality=features.data_quality,
                 dealer_agreement=features.gex_agreement,
                 calibration_quality=self.calibration_quality,
+                structural_weight=weights.structural,
             )
         )
         self._previous_states = states
