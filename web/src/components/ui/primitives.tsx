@@ -13,7 +13,8 @@ type ButtonSize = "xs" | "sm" | "md" | "icon";
 const VARIANTS: Record<ButtonVariant, string> = {
   ghost: "text-ink-dim hover:bg-raised hover:text-ink",
   solid: "bg-signal text-void hover:bg-signal/85 font-semibold",
-  outline: "border border-line-bright text-ink-dim hover:border-signal hover:text-signal",
+  outline:
+    "border border-line-bright text-ink-dim hover:border-signal hover:text-signal",
   danger: "border border-bear/60 text-bear hover:bg-bear/10",
 };
 
@@ -85,7 +86,9 @@ export function Segmented<T extends string>({
             onClick={() => onChange(option.value)}
             className={cn(
               "rounded-[4px] font-semibold uppercase tracking-wider transition-colors duration-100",
-              size === "xs" ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-1 text-micro",
+              size === "xs"
+                ? "px-1.5 py-0.5 text-[10px]"
+                : "px-2 py-1 text-micro",
               active
                 ? "bg-signal/15 text-signal shadow-[inset_0_0_0_1px_rgba(34,211,238,0.45)]"
                 : "text-ink-mute hover:bg-raised hover:text-ink-dim",
@@ -127,9 +130,13 @@ export function Stat({
   }[tone];
 
   return (
-    <div className={cn("panel flex min-w-0 flex-col gap-1 px-3 py-2", className)}>
+    <div
+      className={cn("panel flex min-w-0 flex-col gap-1 px-3 py-2", className)}
+    >
       <div className="panel-title truncate">{label}</div>
-      <div className={cn("tnum text-xl font-semibold leading-none", toneClass)}>{value}</div>
+      <div className={cn("tnum text-xl font-semibold leading-none", toneClass)}>
+        {value}
+      </div>
       {sub ? <div className="text-micro text-ink-mute">{sub}</div> : null}
       {children}
     </div>
@@ -152,11 +159,19 @@ export function Meter({
   className?: string;
   label?: string;
 }) {
-  const color = { signal: "#22D3EE", bull: "#34D399", bear: "#F87171", warn: "#FBBF24" }[tone];
+  const color = {
+    signal: "#22D3EE",
+    bull: "#34D399",
+    bear: "#F87171",
+    warn: "#FBBF24",
+  }[tone];
   const clamped = Math.min(1, Math.max(0, value));
   return (
     <div
-      className={cn("h-1.5 w-full overflow-hidden rounded-full bg-line", className)}
+      className={cn(
+        "h-1.5 w-full overflow-hidden rounded-full bg-line",
+        className,
+      )}
       role="meter"
       aria-valuenow={Math.round(clamped * 100)}
       aria-valuemin={0}

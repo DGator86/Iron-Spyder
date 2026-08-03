@@ -20,7 +20,9 @@ export function InterpretationPanel({
   data: InterpretationPayload;
   className?: string;
 }) {
-  const top = data.stateProbabilities.slice(0, 8).filter((s) => s.probability > 0.001);
+  const top = data.stateProbabilities
+    .slice(0, 8)
+    .filter((s) => s.probability > 0.001);
 
   return (
     <section className={cn("panel flex min-h-0 flex-col", className)}>
@@ -42,11 +44,16 @@ export function InterpretationPanel({
           <Meter value={data.stateConfidence} className="mt-1.5" />
           <div className="mt-1.5 flex items-center justify-between text-[10px] text-ink-mute">
             <span>
-              Stability <span className="tnum text-ink-dim">{data.stateStability.toFixed(2)}</span>
+              Stability{" "}
+              <span className="tnum text-ink-dim">
+                {data.stateStability.toFixed(2)}
+              </span>
             </span>
             <span>
               Agreement{" "}
-              <span className="tnum text-ink-dim">{data.modelAgreement.toFixed(2)}</span>
+              <span className="tnum text-ink-dim">
+                {data.modelAgreement.toFixed(2)}
+              </span>
             </span>
           </div>
         </div>
@@ -95,7 +102,12 @@ export function InterpretationPanel({
               </>
             )}
           </div>
-          <p className={cn("text-[11px]", data.structuralVeto ? "text-bear" : "text-ink-mute")}>
+          <p
+            className={cn(
+              "text-[11px]",
+              data.structuralVeto ? "text-bear" : "text-ink-mute",
+            )}
+          >
             {data.structuralVeto ?? "None"}
           </p>
         </div>
@@ -105,7 +117,10 @@ export function InterpretationPanel({
             <div className="panel-title mb-1.5">Dominant Drivers</div>
             <ul className="space-y-1">
               {data.dominantDrivers.map((driver) => (
-                <li key={driver} className="flex items-start gap-1.5 text-[11px] text-ink-dim">
+                <li
+                  key={driver}
+                  className="flex items-start gap-1.5 text-[11px] text-ink-dim"
+                >
                   <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-signal" />
                   {driver}
                 </li>
@@ -160,7 +175,9 @@ function Row({
   return (
     <div className="flex items-baseline justify-between gap-3 border-t border-line/60 py-1.5 first:border-t-0">
       <span className="text-[11px] text-ink-mute">{label}</span>
-      <span className={cn("tnum text-[12px] font-medium text-ink", tone)}>{value}</span>
+      <span className={cn("tnum text-[12px] font-medium text-ink", tone)}>
+        {value}
+      </span>
     </div>
   );
 }

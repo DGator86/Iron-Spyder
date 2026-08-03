@@ -12,10 +12,19 @@ import {
 import { CanvasRenderer } from "echarts/renderers";
 import * as React from "react";
 
-import { DENSITY_RAMP, DISAGREEMENT_RAMP, GEX_RAMP, IV_RAMP } from "@/lib/colormap";
+import {
+  DENSITY_RAMP,
+  DISAGREEMENT_RAMP,
+  GEX_RAMP,
+  IV_RAMP,
+} from "@/lib/colormap";
 import { renderFieldImage, renderForecastField } from "@/lib/fieldImage";
 import { strategyGeometry } from "@/lib/payoff";
-import type { ForecastChartPayload, LayerId, StrategyCandidate } from "@/lib/types";
+import type {
+  ForecastChartPayload,
+  LayerId,
+  StrategyCandidate,
+} from "@/lib/types";
 import { alpha } from "@/lib/utils";
 import { CanvasReadout, type ReadoutState } from "./CanvasReadout";
 
@@ -45,7 +54,12 @@ echarts.use([
 const PROFILE_WIDTH = 118;
 const PROFILE_MIN_VIEWPORT = 680;
 
-const PROFILE_LAYERS: LayerId[] = ["gex-profile", "call-oi", "put-oi", "volume-profile"];
+const PROFILE_LAYERS: LayerId[] = [
+  "gex-profile",
+  "call-oi",
+  "put-oi",
+  "volume-profile",
+];
 
 function computeInsets(width: number, showProfile: boolean) {
   const compact = width < 520;
@@ -114,7 +128,9 @@ export function ForecastCanvas({
 
   // ---- geometry ---------------------------------------------------------
   const showProfile = React.useMemo(
-    () => size.width >= PROFILE_MIN_VIEWPORT && PROFILE_LAYERS.some((id) => active.has(id)),
+    () =>
+      size.width >= PROFILE_MIN_VIEWPORT &&
+      PROFILE_LAYERS.some((id) => active.has(id)),
     [size.width, active],
   );
 
@@ -139,25 +155,35 @@ export function ForecastCanvas({
       plotHeight,
       priceLow,
       priceHigh,
-      xOf: (index: number) => plotLeft + (plotWidth * index) / Math.max(1, n - 1),
+      xOf: (index: number) =>
+        plotLeft + (plotWidth * index) / Math.max(1, n - 1),
       yOf: (price: number) =>
-        plotTop + plotHeight * (1 - (price - priceLow) / Math.max(1e-9, priceHigh - priceLow)),
+        plotTop +
+        plotHeight *
+          (1 - (price - priceLow) / Math.max(1e-9, priceHigh - priceLow)),
       indexOfX: (px: number) =>
-        Math.round(((px - plotLeft) / Math.max(1, plotWidth)) * Math.max(1, n - 1)),
+        Math.round(
+          ((px - plotLeft) / Math.max(1, plotWidth)) * Math.max(1, n - 1),
+        ),
       priceOfY: (py: number) =>
-        priceHigh - ((py - plotTop) / Math.max(1, plotHeight)) * (priceHigh - priceLow),
+        priceHigh -
+        ((py - plotTop) / Math.max(1, plotHeight)) * (priceHigh - priceLow),
     };
   }, [size, insets, payload.timeAxis.length, payload.priceAxis]);
 
   // ---- field bitmaps ----------------------------------------------------
   const densityImage = React.useMemo(() => {
     if (!isOn("forecast-density")) return null;
-    return renderForecastField(payload.forecastDensity, payload.forecastStartIndex, {
-      ramp: DENSITY_RAMP,
-      scale: "column",
-      columnMix: 0.72,
-      opacity: opacityFor("forecast-density"),
-    });
+    return renderForecastField(
+      payload.forecastDensity,
+      payload.forecastStartIndex,
+      {
+        ramp: DENSITY_RAMP,
+        scale: "column",
+        columnMix: 0.72,
+        opacity: opacityFor("forecast-density"),
+      },
+    );
   }, [isOn, payload.forecastDensity, payload.forecastStartIndex, opacityFor]);
 
   const gexImage = React.useMemo(() => {
@@ -276,7 +302,10 @@ export function ForecastCanvas({
       const price = geometry.priceOfY(event.offsetY);
       const timeIndex = geometry.indexOfX(event.offsetX);
       onSelectStrike?.(Math.round(price));
-      const label = payload.timeAxis[Math.min(payload.timeAxis.length - 1, Math.max(0, timeIndex))];
+      const label =
+        payload.timeAxis[
+          Math.min(payload.timeAxis.length - 1, Math.max(0, timeIndex))
+        ];
       if (label) onSelectTime?.(label);
     };
 
@@ -332,7 +361,15 @@ interface BuildArgs {
 }
 
 function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
-  const { payload, isOn, opacityFor, geometry, insets, showProfile, selectedStrategy } = args;
+  const {
+    payload,
+    isOn,
+    opacityFor,
+    geometry,
+    insets,
+    showProfile,
+    selectedStrategy,
+  } = args;
   const n = payload.timeAxis.length;
   const compact = geometry.plotWidth < 460;
   const priceLow = payload.priceAxis[0];
@@ -372,7 +409,10 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
       shape: {
         x: geometry.plotLeft,
         y: geometry.plotTop,
-        width: Math.max(0, geometry.xOf(payload.forecastStartIndex) - geometry.plotLeft),
+        width: Math.max(
+          0,
+          geometry.xOf(payload.forecastStartIndex) - geometry.plotLeft,
+        ),
         height: geometry.plotHeight,
       },
       style: { fill: "rgba(3, 7, 14, 0.45)" },
@@ -384,7 +424,9 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
   // ---- Quantile bands ---------------------------------------------------
   if (isOn("forecast-quantiles")) {
     const o = opacityFor("forecast-quantiles");
-    const pairs: Array<[keyof typeof payload.quantiles, keyof typeof payload.quantiles, number]> = [
+    const pairs: Array<
+      [keyof typeof payload.quantiles, keyof typeof payload.quantiles, number]
+    > = [
       ["p05", "p95", 0.1],
       ["p10", "p90", 0.14],
       ["p25", "p75", 0.2],
@@ -451,7 +493,11 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
         data: [
           ...geo.breakevens.map((be) => ({
             yAxis: be,
-            lineStyle: { color: alpha("#FBBF24", o), width: 1, type: "dashed" as const },
+            lineStyle: {
+              color: alpha("#FBBF24", o),
+              width: 1,
+              type: "dashed" as const,
+            },
             label: {
               formatter: `BE ${be.toFixed(2)}`,
               position: "insideEndTop" as const,
@@ -462,7 +508,11 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
           })),
           ...geo.shortStrikes.map((strike) => ({
             yAxis: strike,
-            lineStyle: { color: alpha("#F87171", 0.9 * o), width: 1.5, type: "solid" as const },
+            lineStyle: {
+              color: alpha("#F87171", 0.9 * o),
+              width: 1.5,
+              type: "solid" as const,
+            },
             label: {
               formatter: `SHORT ${strike}`,
               position: "insideStartTop" as const,
@@ -472,7 +522,11 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
           })),
           ...geo.longStrikes.map((strike) => ({
             yAxis: strike,
-            lineStyle: { color: alpha("#34D399", 0.9 * o), width: 1.5, type: "solid" as const },
+            lineStyle: {
+              color: alpha("#34D399", 0.9 * o),
+              width: 1.5,
+              type: "solid" as const,
+            },
             label: {
               formatter: `LONG ${strike}`,
               position: "insideStartTop" as const,
@@ -519,9 +573,24 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
   pushLevel("call-wall", payload.levels.callWall, "#34D399", "CALL WALL");
   pushLevel("put-wall", payload.levels.putWall, "#F87171", "PUT WALL");
   pushLevel("gamma-flip", payload.levels.gammaFlip, "#67E8F9", "GEX FLIP");
-  pushLevel("vol-trigger", payload.levels.volatilityTrigger, "#FB923C", "VOL TRIG");
-  pushLevel("expected-move", payload.levels.expectedMoveUpper, "#E879F9", "EM+");
-  pushLevel("expected-move", payload.levels.expectedMoveLower, "#E879F9", "EM−");
+  pushLevel(
+    "vol-trigger",
+    payload.levels.volatilityTrigger,
+    "#FB923C",
+    "VOL TRIG",
+  );
+  pushLevel(
+    "expected-move",
+    payload.levels.expectedMoveUpper,
+    "#E879F9",
+    "EM+",
+  );
+  pushLevel(
+    "expected-move",
+    payload.levels.expectedMoveLower,
+    "#E879F9",
+    "EM−",
+  );
   pushLevel("session-range", payload.levels.sessionHigh, "#5A6E8C", "HIGH");
   pushLevel("session-range", payload.levels.sessionLow, "#5A6E8C", "LOW");
 
@@ -542,8 +611,12 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
     // The payload's arrow lattice is fixed, so thin it against the *pixel*
     // spacing actually available. Without this the field turns into hatching on
     // a narrow viewport.
-    const times = [...new Set(payload.vectors.map((v) => v.timeIndex))].sort((a, b) => a - b);
-    const prices = [...new Set(payload.vectors.map((v) => v.priceIndex))].sort((a, b) => a - b);
+    const times = [...new Set(payload.vectors.map((v) => v.timeIndex))].sort(
+      (a, b) => a - b,
+    );
+    const prices = [...new Set(payload.vectors.map((v) => v.priceIndex))].sort(
+      (a, b) => a - b,
+    );
     const xSpacing = geometry.plotWidth / Math.max(1, times.length);
     const ySpacing = geometry.plotHeight / Math.max(1, prices.length);
     const kx = Math.max(1, Math.ceil(56 / Math.max(1, xSpacing)));
@@ -557,8 +630,15 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
       silent: true,
       z: 6,
       data: payload.vectors
-        .filter((v) => keepTimes.has(v.timeIndex) && keepPrices.has(v.priceIndex))
-        .map((v) => [v.timeIndex, payload.priceAxis[v.priceIndex], v.dy, v.strength]),
+        .filter(
+          (v) => keepTimes.has(v.timeIndex) && keepPrices.has(v.priceIndex),
+        )
+        .map((v) => [
+          v.timeIndex,
+          payload.priceAxis[v.priceIndex],
+          v.dy,
+          v.strength,
+        ]),
       renderItem: (_params: unknown, api: ArrowApi) => {
         const x = api.value(0);
         const price = api.value(1);
@@ -575,7 +655,12 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
           children: [
             {
               type: "line",
-              shape: { x1: point[0] - length, y1: point[1] - tilt, x2: point[0] + length, y2: point[1] + tilt },
+              shape: {
+                x1: point[0] - length,
+                y1: point[1] - tilt,
+                x2: point[0] + length,
+                y2: point[1] + tilt,
+              },
               style: { stroke: alpha("#C7D6EC", opacity * o), lineWidth: 1 },
             },
             {
@@ -656,7 +741,10 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
       showSymbol: false,
       silent: true,
       z: 11,
-      lineStyle: { width: 1.8, color: alpha("#E6EDF7", opacityFor("spy-price")) },
+      lineStyle: {
+        width: 1.8,
+        color: alpha("#E6EDF7", opacityFor("spy-price")),
+      },
       animation: false,
     });
   }
@@ -672,20 +760,35 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
       data: payload.gexProfile.map((g) => [g.gex, g.price]),
       showSymbol: false,
       silent: true,
-      lineStyle: { width: 1.2, color: alpha("#FBBF24", opacityFor("gex-profile")) },
-      areaStyle: { color: alpha("#FBBF24", 0.12 * opacityFor("gex-profile")), origin: "start" },
+      lineStyle: {
+        width: 1.2,
+        color: alpha("#FBBF24", opacityFor("gex-profile")),
+      },
+      areaStyle: {
+        color: alpha("#FBBF24", 0.12 * opacityFor("gex-profile")),
+        origin: "start",
+      },
       animation: false,
     });
   }
   if (isOn("call-oi")) {
-    profileSeries.push(oiProfileSeries(payload, "callOi", "#34D399", opacityFor("call-oi")));
+    profileSeries.push(
+      oiProfileSeries(payload, "callOi", "#34D399", opacityFor("call-oi")),
+    );
   }
   if (isOn("put-oi")) {
-    profileSeries.push(oiProfileSeries(payload, "putOi", "#F87171", opacityFor("put-oi")));
+    profileSeries.push(
+      oiProfileSeries(payload, "putOi", "#F87171", opacityFor("put-oi")),
+    );
   }
   if (isOn("volume-profile")) {
     profileSeries.push(
-      oiProfileSeries(payload, "callVolume", "#64748B", opacityFor("volume-profile")),
+      oiProfileSeries(
+        payload,
+        "callVolume",
+        "#64748B",
+        opacityFor("volume-profile"),
+      ),
     );
   }
 
@@ -702,10 +805,18 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
     .filter(({ index }) => index >= 0)
     .map(({ marker, index }) => {
       const color =
-        marker.kind === "now" ? "#E6EDF7" : marker.kind === "expiry" ? "#E879F9" : "#94A6C0";
+        marker.kind === "now"
+          ? "#E6EDF7"
+          : marker.kind === "expiry"
+            ? "#E879F9"
+            : "#94A6C0";
       return {
         xAxis: index,
-        lineStyle: { color: alpha(color, 0.75), width: 1, type: "dashed" as const },
+        lineStyle: {
+          color: alpha(color, 0.75),
+          width: 1,
+          type: "dashed" as const,
+        },
         label: {
           formatter: marker.label,
           position: "insideEndBottom" as const,
@@ -822,13 +933,17 @@ function bandSeries(name: string, data: number[], _n: number, fill?: string) {
   return {
     type: "line",
     name,
-    stack: name.endsWith("-fill") ? name.replace("-fill", "") : name.replace("-base", ""),
+    stack: name.endsWith("-fill")
+      ? name.replace("-fill", "")
+      : name.replace("-base", ""),
     data,
     showSymbol: false,
     silent: true,
     z: 4,
     lineStyle: { width: 0, opacity: 0 },
-    areaStyle: fill ? { color: fill, origin: "start" } : { opacity: 0, color: "transparent" },
+    areaStyle: fill
+      ? { color: fill, origin: "start" }
+      : { opacity: 0, color: "transparent" },
     animation: false,
   };
 }
@@ -874,7 +989,9 @@ function alignToAxis(
       return direct;
     }
     // Only carry forward inside the realized window; never into the forecast.
-    return byTime.size > 0 && label <= points[points.length - 1].time ? last : NaN;
+    return byTime.size > 0 && label <= points[points.length - 1].time
+      ? last
+      : NaN;
   });
 }
 

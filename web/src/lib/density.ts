@@ -62,7 +62,8 @@ export function invertQuantile(grid: QuantileGrid, price: number): number {
   if (grid.length === 0) throw new Error("empty quantile grid");
   const byPrice = [...grid].sort((a, b) => a[1] - b[1]);
   if (price <= byPrice[0][1]) return byPrice[0][0];
-  if (price >= byPrice[byPrice.length - 1][1]) return byPrice[byPrice.length - 1][0];
+  if (price >= byPrice[byPrice.length - 1][1])
+    return byPrice[byPrice.length - 1][0];
   for (let i = 0; i < byPrice.length - 1; i += 1) {
     const [t0, v0] = byPrice[i];
     const [t1, v1] = byPrice[i + 1];
@@ -204,10 +205,12 @@ export function buildDensitySurface(
     density[t] = column;
 
     let bestIdx = 0;
-    for (let p = 1; p < nP; p += 1) if (column[p] > column[bestIdx]) bestIdx = p;
+    for (let p = 1; p < nP; p += 1)
+      if (column[p] > column[bestIdx]) bestIdx = p;
     modePath[t] = priceAxis[bestIdx];
     medianPath[t] = interpolateQuantile(grid, 0.5);
-    for (const [name, tau] of BAND_TAUS) bands[name][t] = interpolateQuantile(grid, tau);
+    for (const [name, tau] of BAND_TAUS)
+      bands[name][t] = interpolateQuantile(grid, tau);
   }
 
   return { density, modePath, medianPath, bands };
@@ -219,7 +222,8 @@ function priceEdges(priceAxis: number[]): number[] {
   if (n === 0) return [];
   if (n === 1) return [priceAxis[0] - 0.5, priceAxis[0] + 0.5];
   const edges = new Array<number>(n + 1);
-  for (let i = 1; i < n; i += 1) edges[i] = (priceAxis[i - 1] + priceAxis[i]) / 2;
+  for (let i = 1; i < n; i += 1)
+    edges[i] = (priceAxis[i - 1] + priceAxis[i]) / 2;
   edges[0] = priceAxis[0] - (edges[1] - priceAxis[0]);
   edges[n] = priceAxis[n - 1] + (priceAxis[n - 1] - edges[n - 1]);
   return edges;
@@ -274,7 +278,12 @@ export function finishAbove(grid: QuantileGrid, level: number): number {
  * touch probabilities per strike where it has them; this is the fallback used
  * to fill the ladder between reported strikes.
  */
-export function touchProbability(grid: QuantileGrid, level: number, spot: number): number {
-  const beyond = level >= spot ? finishAbove(grid, level) : invertQuantile(grid, level);
+export function touchProbability(
+  grid: QuantileGrid,
+  level: number,
+  spot: number,
+): number {
+  const beyond =
+    level >= spot ? finishAbove(grid, level) : invertQuantile(grid, level);
   return Math.min(1, Math.max(0, 2 * beyond));
 }

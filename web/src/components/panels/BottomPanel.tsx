@@ -9,7 +9,7 @@ import type {
   StrategyCandidate,
   SystemPayload,
 } from "@/lib/types";
-import { cn, compactUsd, pct, price, usd } from "@/lib/utils";
+import { cn, compactUsd, NA, orNA, pct, price, usd } from "@/lib/utils";
 import { useViewStore } from "@/store/viewStore";
 import { PayoffSpark } from "./PayoffSpark";
 
@@ -75,18 +75,28 @@ export function BottomPanel({
           <StrategyTable
             strategies={strategies}
             selectedId={selectedStrategyId}
-            onSelect={(id) => selectStrategy(id === selectedStrategyId ? undefined : id)}
+            onSelect={(id) =>
+              selectStrategy(id === selectedStrategyId ? undefined : id)
+            }
           />
         ) : null}
-        {tab === "Terminal Probabilities" ? <TerminalProbabilities chart={chart} /> : null}
+        {tab === "Terminal Probabilities" ? (
+          <TerminalProbabilities chart={chart} />
+        ) : null}
         {tab === "Strike Inspector" ? (
           <StrikeInspector chart={chart} strike={selectedStrike} />
         ) : null}
         {tab === "Options Flow" ? <OptionsFlow chart={chart} /> : null}
-        {tab === "Volatility Surface" ? <VolatilitySurface system={system} /> : null}
+        {tab === "Volatility Surface" ? (
+          <VolatilitySurface system={system} />
+        ) : null}
         {tab === "Risk" ? <RiskPanel system={system} /> : null}
         {tab === "Model Health" ? (
-          <ModelHealth chart={chart} interpretation={interpretation} system={system} />
+          <ModelHealth
+            chart={chart}
+            interpretation={interpretation}
+            system={system}
+          />
         ) : null}
         {tab === "Backtest Replay" ? <BacktestReplay /> : null}
       </div>
@@ -106,7 +116,9 @@ function StrategyTable({
   onSelect: (id: string) => void;
 }) {
   if (strategies.length === 0) {
-    return <Empty>No candidate cleared the no-trade utility floor this cycle.</Empty>;
+    return (
+      <Empty>No candidate cleared the no-trade utility floor this cycle.</Empty>
+    );
   }
 
   return (
@@ -146,7 +158,9 @@ function StrategyTable({
                 <span
                   className={cn(
                     "inline-grid h-4 w-4 place-items-center rounded text-[9px] font-bold",
-                    s.rank === 1 ? "bg-warn text-void" : "bg-raised text-ink-dim",
+                    s.rank === 1
+                      ? "bg-warn text-void"
+                      : "bg-raised text-ink-dim",
                   )}
                 >
                   {s.rank}
@@ -157,7 +171,10 @@ function StrategyTable({
               <Td className="text-left">
                 <span className="tnum text-ink-dim">
                   {s.legs
-                    .map((l) => `${l.quantity > 0 ? "+" : ""}${l.quantity}×${l.strike}${l.right[0].toUpperCase()}`)
+                    .map(
+                      (l) =>
+                        `${l.quantity > 0 ? "+" : ""}${l.quantity}×${l.strike}${l.right[0].toUpperCase()}`,
+                    )
                     .join(" ")}
                 </span>
               </Td>
@@ -203,7 +220,9 @@ function StrategyTable({
 // ---------------------------------------------------------------------------
 
 function TerminalProbabilities({ chart }: { chart: ForecastChartPayload }) {
-  const rows = chart.strikes.filter((s) => Math.abs(s.strike - chart.spot) <= 10);
+  const rows = chart.strikes.filter(
+    (s) => Math.abs(s.strike - chart.spot) <= 10,
+  );
 
   return (
     <table className="w-full border-collapse text-[11px]">
@@ -237,7 +256,10 @@ function TerminalProbabilities({ chart }: { chart: ForecastChartPayload }) {
                     className="h-full bg-bear/70"
                     style={{ width: `${(1 - row.finishAbove) * 100}%` }}
                   />
-                  <div className="h-full bg-bull/70" style={{ width: `${row.finishAbove * 100}%` }} />
+                  <div
+                    className="h-full bg-bull/70"
+                    style={{ width: `${row.finishAbove * 100}%` }}
+                  />
                 </div>
               </Td>
             </tr>
@@ -257,7 +279,9 @@ function StrikeInspector({
   chart: ForecastChartPayload;
   strike?: number;
 }) {
-  const row = strike ? chart.strikes.find((s) => s.strike === strike) : undefined;
+  const row = strike
+    ? chart.strikes.find((s) => s.strike === strike)
+    : undefined;
 
   if (!row) {
     return <Empty>Click a strike on the canvas to inspect it.</Empty>;
@@ -268,7 +292,10 @@ function StrikeInspector({
   return (
     <div className="grid grid-cols-2 gap-3 p-3 md:grid-cols-4">
       <Field label="Strike" value={String(row.strike)} big />
-      <Field label="Distance from spot" value={`${(row.strike - chart.spot).toFixed(2)}`} />
+      <Field
+        label="Distance from spot"
+        value={`${(row.strike - chart.spot).toFixed(2)}`}
+      />
       <Field label="Net GEX" value={compactUsd(row.netGex * 1e9)} />
       <Field label="Signed premium" value={compactUsd(row.signedPremium)} />
       <Field label="Call OI" value={row.callOi.toLocaleString()} />
@@ -282,11 +309,15 @@ function StrikeInspector({
         <div className="flex h-3 overflow-hidden rounded bg-line">
           <div
             className="h-full bg-bull/70"
-            style={{ width: total > 0 ? `${(row.callOi / total) * 100}%` : "50%" }}
+            style={{
+              width: total > 0 ? `${(row.callOi / total) * 100}%` : "50%",
+            }}
           />
           <div
             className="h-full bg-bear/70"
-            style={{ width: total > 0 ? `${(row.putOi / total) * 100}%` : "50%" }}
+            style={{
+              width: total > 0 ? `${(row.putOi / total) * 100}%` : "50%",
+            }}
           />
         </div>
       </div>
@@ -303,7 +334,9 @@ function OptionsFlow({ chart }: { chart: ForecastChartPayload }) {
     .slice(0, 14);
 
   if (rows.length === 0) {
-    return <Empty>The engine does not expose strike-level premium flow yet.</Empty>;
+    return (
+      <Empty>The engine does not expose strike-level premium flow yet.</Empty>
+    );
   }
 
   const peak = Math.max(...rows.map((r) => Math.abs(r.signedPremium)), 1);
@@ -312,12 +345,16 @@ function OptionsFlow({ chart }: { chart: ForecastChartPayload }) {
     <div className="space-y-1 p-3">
       {rows.map((row) => (
         <div key={row.strike} className="flex items-center gap-3">
-          <span className="tnum w-12 shrink-0 text-[11px] text-ink-dim">{row.strike}</span>
+          <span className="tnum w-12 shrink-0 text-[11px] text-ink-dim">
+            {row.strike}
+          </span>
           <div className="relative h-3 flex-1 rounded bg-line/40">
             <div
               className={cn(
                 "absolute top-0 h-full rounded",
-                row.signedPremium >= 0 ? "left-1/2 bg-bull/70" : "right-1/2 bg-bear/70",
+                row.signedPremium >= 0
+                  ? "left-1/2 bg-bull/70"
+                  : "right-1/2 bg-bear/70",
               )}
               style={{ width: `${(Math.abs(row.signedPremium) / peak) * 50}%` }}
             />
@@ -348,11 +385,20 @@ function VolatilitySurface({ system }: { system: SystemPayload }) {
         label="IV − RV spread"
         value={`${(system.atmIv - system.realizedVol).toFixed(2)}%`}
       />
-      <Field label="IV rank" value={`${system.ivRank.toFixed(1)}%`} />
-      <Field label="Expected move" value={`±${system.expectedMove.toFixed(2)}`} />
+      <Field
+        label="IV rank"
+        value={orNA(system.ivRank, (v) => `${v.toFixed(1)}%`)}
+      />
+      <Field
+        label="Expected move"
+        value={`±${system.expectedMove.toFixed(2)}`}
+      />
       <Field label="EM %" value={`${system.expectedMovePercent.toFixed(2)}%`} />
       <Field label="EM utilization" value={pct(system.emUtilization, 0)} />
-      <Field label="Vanna exposure" value={`${system.vannaExposure.toFixed(2)}B`} />
+      <Field
+        label="Vanna exposure"
+        value={`${system.vannaExposure.toFixed(2)}B`}
+      />
     </div>
   );
 }
@@ -360,34 +406,78 @@ function VolatilitySurface({ system }: { system: SystemPayload }) {
 // ---------------------------------------------------------------------------
 
 function RiskPanel({ system }: { system: SystemPayload }) {
-  const lossUsed = system.dailyLossLimit > 0 ? Math.abs(Math.min(0, system.dailyPnl)) / system.dailyLossLimit : 0;
+  // Both halves must be real for the meter to mean anything. With an unknown
+  // limit a drawn bar is not "0% used", it is a fabricated denominator — so the
+  // meter is withheld entirely rather than rendered empty.
+  const lossUsed =
+    system.dailyLossLimit !== null &&
+    system.dailyLossLimit > 0 &&
+    system.dailyPnl !== null
+      ? Math.abs(Math.min(0, system.dailyPnl)) / system.dailyLossLimit
+      : null;
+  const positionsUsed =
+    system.maxOpenPositions !== null && system.maxOpenPositions > 0
+      ? system.openPositions / system.maxOpenPositions
+      : null;
 
   return (
     <div className="grid grid-cols-2 gap-3 p-3 md:grid-cols-4">
-      <Field label="Account equity" value={usd(system.equity, 2)} big />
+      <Field
+        label="Account equity"
+        value={orNA(system.equity, (v) => usd(v, 2))}
+        big
+      />
       <Field
         label="Daily P&L"
-        value={`${system.dailyPnl >= 0 ? "+" : "−"}${usd(Math.abs(system.dailyPnl), 2)}`}
-        tone={system.dailyPnl >= 0 ? "text-bull" : "text-bear"}
+        value={orNA(
+          system.dailyPnl,
+          (v) => `${v >= 0 ? "+" : "−"}${usd(Math.abs(v), 2)}`,
+        )}
+        tone={
+          system.dailyPnl === null
+            ? undefined
+            : system.dailyPnl >= 0
+              ? "text-bull"
+              : "text-bear"
+        }
       />
-      <Field label="Open risk" value={usd(system.openRisk)} />
-      <Field label="Buying power" value={usd(system.buyingPower)} />
+      <Field label="Open risk" value={orNA(system.openRisk, (v) => usd(v))} />
+      <Field
+        label="Buying power"
+        value={orNA(system.buyingPower, (v) => usd(v))}
+      />
       <div className="col-span-2">
         <div className="panel-title mb-1">Daily loss limit</div>
-        <Meter value={lossUsed} tone={lossUsed > 0.7 ? "bear" : "bull"} />
-        <div className="mt-1 flex justify-between text-[10px] text-ink-mute">
-          <span>{usd(Math.abs(Math.min(0, system.dailyPnl)))} used</span>
-          <span>{usd(system.dailyLossLimit)} limit</span>
-        </div>
+        {lossUsed === null ? (
+          <div className="text-[10px] text-ink-mute">
+            {NA} not reported by the engine
+          </div>
+        ) : (
+          <>
+            <Meter value={lossUsed} tone={lossUsed > 0.7 ? "bear" : "bull"} />
+            <div className="mt-1 flex justify-between text-[10px] text-ink-mute">
+              <span>
+                {usd(Math.abs(Math.min(0, system.dailyPnl ?? 0)))} used
+              </span>
+              <span>{orNA(system.dailyLossLimit, (v) => usd(v))} limit</span>
+            </div>
+          </>
+        )}
       </div>
       <div className="col-span-2">
         <div className="panel-title mb-1">Open positions</div>
-        <Meter
-          value={system.maxOpenPositions > 0 ? system.openPositions / system.maxOpenPositions : 0}
-        />
-        <div className="mt-1 text-[10px] text-ink-mute">
-          {system.openPositions} / {system.maxOpenPositions || "—"}
-        </div>
+        {positionsUsed === null ? (
+          <div className="text-[10px] text-ink-mute">
+            {system.openPositions} open, cap {NA}
+          </div>
+        ) : (
+          <>
+            <Meter value={positionsUsed} />
+            <div className="mt-1 text-[10px] text-ink-mute">
+              {system.openPositions} / {system.maxOpenPositions}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -415,16 +505,23 @@ function ModelHealth({
   return (
     <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => (
-        <div key={item.label} className="rounded border border-line bg-deep/50 px-3 py-2.5">
+        <div
+          key={item.label}
+          className="rounded border border-line bg-deep/50 px-3 py-2.5"
+        >
           <div className="mb-1 flex items-baseline justify-between">
             <span className="text-[10px] uppercase tracking-wider text-ink-mute">
               {item.label}
             </span>
-            <span className="tnum text-sm font-semibold text-ink">{pct(item.value, 0)}</span>
+            <span className="tnum text-sm font-semibold text-ink">
+              {pct(item.value, 0)}
+            </span>
           </div>
           <Meter
             value={item.value}
-            tone={item.value > 0.7 ? "bull" : item.value > 0.4 ? "warn" : "bear"}
+            tone={
+              item.value > 0.7 ? "bull" : item.value > 0.4 ? "warn" : "bear"
+            }
           />
         </div>
       ))}
@@ -435,22 +532,39 @@ function ModelHealth({
 function BacktestReplay() {
   return (
     <Empty>
-      Load a recorded session with the timeline scrubber, then press play to watch the layers
-      evolve. Historical tapes are served by the engine&apos;s import pipeline.
+      Load a recorded session with the timeline scrubber, then press play to
+      watch the layers evolve. Historical tapes are served by the engine&apos;s
+      import pipeline.
     </Empty>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-function Th({ children, className }: { children: React.ReactNode; className?: string }) {
+function Th({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <th className={cn("px-2 py-1.5 text-right font-semibold", className)}>{children}</th>
+    <th className={cn("px-2 py-1.5 text-right font-semibold", className)}>
+      {children}
+    </th>
   );
 }
 
-function Td({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={cn("tnum px-2 py-1.5 text-right", className)}>{children}</td>;
+function Td({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <td className={cn("tnum px-2 py-1.5 text-right", className)}>{children}</td>
+  );
 }
 
 function Field({
@@ -483,7 +597,9 @@ function Field({
 function Empty({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid h-full min-h-[120px] place-items-center px-6 text-center">
-      <p className="max-w-md text-[11px] leading-relaxed text-ink-mute">{children}</p>
+      <p className="max-w-md text-[11px] leading-relaxed text-ink-mute">
+        {children}
+      </p>
     </div>
   );
 }

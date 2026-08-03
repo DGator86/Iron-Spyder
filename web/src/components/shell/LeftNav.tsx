@@ -71,7 +71,9 @@ export function LeftNav({
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 {!collapsed ? (
-                  <span className="truncate uppercase tracking-wider">{item.label}</span>
+                  <span className="truncate uppercase tracking-wider">
+                    {item.label}
+                  </span>
                 ) : null}
               </button>
             </li>
@@ -89,7 +91,10 @@ export function LeftNav({
           aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
         >
           <ChevronsLeft
-            className={cn("h-4 w-4 transition-transform duration-200", collapsed && "rotate-180")}
+            className={cn(
+              "h-4 w-4 transition-transform duration-200",
+              collapsed && "rotate-180",
+            )}
           />
         </button>
       </div>

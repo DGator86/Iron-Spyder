@@ -46,7 +46,8 @@ export function RadarShell() {
   );
 
   const opacityFor = React.useCallback(
-    (id: (typeof activeLayers)[number]) => (layers[id]?.opacity ?? 1) * globalOpacity,
+    (id: (typeof activeLayers)[number]) =>
+      (layers[id]?.opacity ?? 1) * globalOpacity,
     [layers, globalOpacity],
   );
 
@@ -59,9 +60,13 @@ export function RadarShell() {
     return (
       <div className="grid h-full place-items-center p-8">
         <div className="panel max-w-md px-5 py-4 text-center">
-          <p className="mb-1 text-sm font-semibold text-bear">Radar feed unavailable</p>
+          <p className="mb-1 text-sm font-semibold text-bear">
+            Radar feed unavailable
+          </p>
           <p className="text-[11px] leading-relaxed text-ink-mute">
-            {error instanceof Error ? error.message : "The chart endpoint did not respond."}
+            {error instanceof Error
+              ? error.message
+              : "The chart endpoint did not respond."}
           </p>
         </div>
       </div>
@@ -73,7 +78,9 @@ export function RadarShell() {
       <div className="grid h-full place-items-center">
         <div className="flex items-center gap-2 text-ink-mute">
           <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="text-[11px] uppercase tracking-wider">Acquiring forecast field</span>
+          <span className="text-[11px] uppercase tracking-wider">
+            Acquiring forecast field
+          </span>
         </div>
       </div>
     );
@@ -86,7 +93,11 @@ export function RadarShell() {
       <LeftNav className="hidden lg:flex" />
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <TopBar system={system} source={source} degradedReason={data.degradedReason} />
+        <TopBar
+          system={system}
+          source={source}
+          degradedReason={data.degradedReason}
+        />
 
         {/* Horizon + presets */}
         <div className="flex shrink-0 items-center gap-3 overflow-x-auto border-b border-line bg-panel/40 px-3 py-1.5">
@@ -114,7 +125,11 @@ export function RadarShell() {
           {/* Layers move into a drawer below xl, where the rail would crowd the canvas. */}
           <Sheet>
             <SheetTrigger asChild>
-              <Button size="sm" variant="outline" className="shrink-0 xl:hidden">
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0 xl:hidden"
+              >
                 <LayersIcon className="h-3 w-3" />
                 Layers
               </Button>
@@ -154,7 +169,11 @@ export function RadarShell() {
 
             <Sheet>
               <SheetTrigger asChild>
-                <Button size="sm" variant="outline" className="shrink-0 md:hidden">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 md:hidden"
+                >
                   <LayoutPanelTop className="h-3 w-3" />
                   Analysis
                 </Button>
@@ -173,7 +192,10 @@ export function RadarShell() {
 
           {/* Right rail */}
           <div className="hidden w-[290px] shrink-0 flex-col gap-2 xl:flex">
-            <InterpretationPanel data={interpretation} className="max-h-[46%] shrink-0" />
+            <InterpretationPanel
+              data={interpretation}
+              className="max-h-[46%] shrink-0"
+            />
             <LayerPanel className="min-h-0 flex-1" />
           </div>
         </div>
@@ -219,7 +241,9 @@ function CanvasLegend() {
               strokeDasharray={item.dash ? "3 2" : undefined}
             />
           </svg>
-          <span className="text-[9px] uppercase tracking-wider text-ink-mute">{item.label}</span>
+          <span className="text-[9px] uppercase tracking-wider text-ink-mute">
+            {item.label}
+          </span>
         </span>
       ))}
     </div>

@@ -45,31 +45,42 @@ export function CanvasReadout({
       const value = column?.[state.priceIndex] ?? 0;
       // Column sums to 1 across the price lattice, so this is the probability
       // of settling inside this price bin at this time.
-      out.push({ label: "Probability Density", value: pct(value, 2), tone: "text-signal" });
+      out.push({
+        label: "Probability Density",
+        value: pct(value, 2),
+        tone: "text-signal",
+      });
     }
 
     if (active.has("forecast-median")) {
       const median = payload.medianPath[state.timeIndex];
       if (Number.isFinite(median)) {
-        out.push({ label: "Forecast Median", value: fmtPrice(median), tone: "text-signal" });
+        out.push({
+          label: "Forecast Median",
+          value: fmtPrice(median),
+          tone: "text-signal",
+        });
       }
     }
 
     if (active.has("forecast-mode")) {
       const mode = payload.modePath[state.timeIndex];
-      if (Number.isFinite(mode)) out.push({ label: "Mode Path", value: fmtPrice(mode) });
+      if (Number.isFinite(mode))
+        out.push({ label: "Mode Path", value: fmtPrice(mode) });
     }
 
     if (active.has("spy-price") && !state.isForecast) {
-      const point = payload.historicalPrice[
-        Math.min(payload.historicalPrice.length - 1, state.timeIndex)
-      ];
+      const point =
+        payload.historicalPrice[
+          Math.min(payload.historicalPrice.length - 1, state.timeIndex)
+        ];
       if (point) out.push({ label: "SPY Price", value: fmtPrice(point.value) });
     }
 
     if (active.has("vwap")) {
       const vwap = payload.levels.vwap;
-      if (vwap !== undefined) out.push({ label: "VWAP", value: fmtPrice(vwap), tone: "text-warn" });
+      if (vwap !== undefined)
+        out.push({ label: "VWAP", value: fmtPrice(vwap), tone: "text-warn" });
     }
 
     const gex = payload.gexSurface[state.timeIndex]?.[state.priceIndex];
@@ -89,13 +100,22 @@ export function CanvasReadout({
     const strike = nearestStrike(payload, state.price);
     if (strike) {
       if (active.has("call-oi")) {
-        out.push({ label: `Call OI @${strike.strike}`, value: strike.callOi.toLocaleString() });
+        out.push({
+          label: `Call OI @${strike.strike}`,
+          value: strike.callOi.toLocaleString(),
+        });
       }
       if (active.has("put-oi")) {
-        out.push({ label: `Put OI @${strike.strike}`, value: strike.putOi.toLocaleString() });
+        out.push({
+          label: `Put OI @${strike.strike}`,
+          value: strike.putOi.toLocaleString(),
+        });
       }
       if (state.isForecast) {
-        out.push({ label: "Touch Probability", value: pct(strike.touchProbability, 0) });
+        out.push({
+          label: "Touch Probability",
+          value: pct(strike.touchProbability, 0),
+        });
         out.push({ label: "Finish Above", value: pct(strike.finishAbove, 0) });
       }
     }
@@ -126,9 +146,17 @@ export function CanvasReadout({
       </div>
       <dl className="space-y-0.5">
         {rows.map((row) => (
-          <div key={row.label} className="flex items-baseline justify-between gap-3">
+          <div
+            key={row.label}
+            className="flex items-baseline justify-between gap-3"
+          >
             <dt className="truncate text-[10px] text-ink-mute">{row.label}</dt>
-            <dd className={cn("tnum shrink-0 text-[11px] font-medium", row.tone ?? "text-ink")}>
+            <dd
+              className={cn(
+                "tnum shrink-0 text-[11px] font-medium",
+                row.tone ?? "text-ink",
+              )}
+            >
               {row.value}
             </dd>
           </div>

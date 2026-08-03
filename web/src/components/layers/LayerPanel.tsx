@@ -22,7 +22,9 @@ export function LayerPanel({ className }: { className?: string }) {
   const resetAll = useLayerStore((s) => s.resetAll);
 
   const [expanded, setExpanded] = React.useState<string | null>(null);
-  const [collapsedGroups, setCollapsedGroups] = React.useState<Set<LayerGroup>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = React.useState<Set<LayerGroup>>(
+    new Set(),
+  );
 
   const grouped = React.useMemo(() => {
     const map = new Map<LayerGroup, LayerMeta[]>();
@@ -46,7 +48,12 @@ export function LayerPanel({ className }: { className?: string }) {
             {activeCount}
           </span>
         </div>
-        <Button size="xs" variant="ghost" onClick={resetAll} title="Reset all layers">
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={resetAll}
+          title="Reset all layers"
+        >
           <RotateCcw className="h-3 w-3" />
           Reset
         </Button>
@@ -100,7 +107,9 @@ export function LayerPanel({ className }: { className?: string }) {
                         <div
                           className={cn(
                             "group flex items-center gap-2 rounded px-1.5 py-1 transition-colors",
-                            state.enabled ? "bg-raised/50" : "hover:bg-raised/30",
+                            state.enabled
+                              ? "bg-raised/50"
+                              : "hover:bg-raised/30",
                           )}
                         >
                           <Switch
@@ -134,7 +143,9 @@ export function LayerPanel({ className }: { className?: string }) {
                           <InfoDot text={meta.description} />
 
                           <button
-                            onClick={() => setExpanded(isExpanded ? null : meta.id)}
+                            onClick={() =>
+                              setExpanded(isExpanded ? null : meta.id)
+                            }
                             className={cn(
                               "opacity-0 transition-opacity group-hover:opacity-100",
                               isExpanded && "opacity-100",
@@ -158,7 +169,9 @@ export function LayerPanel({ className }: { className?: string }) {
                             </div>
                             <Slider
                               value={[state.opacity * 100]}
-                              onValueChange={([v]) => setOpacity(meta.id, v / 100)}
+                              onValueChange={([v]) =>
+                                setOpacity(meta.id, v / 100)
+                              }
                               min={0}
                               max={100}
                               step={1}
@@ -205,7 +218,9 @@ export function LayerPanel({ className }: { className?: string }) {
           <span className="text-micro font-semibold uppercase tracking-[0.14em] text-ink-dim">
             Layer Opacity
           </span>
-          <span className="tnum text-[11px] text-ink">{Math.round(globalOpacity * 100)}%</span>
+          <span className="tnum text-[11px] text-ink">
+            {Math.round(globalOpacity * 100)}%
+          </span>
         </div>
         <Slider
           value={[globalOpacity * 100]}
@@ -235,7 +250,10 @@ function LayerGlyph({ meta, dimmed }: { meta: LayerMeta; dimmed: boolean }) {
   const opacity = dimmed ? 0.3 : 1;
 
   return (
-    <span className="grid h-3.5 w-3.5 shrink-0 place-items-center" style={{ opacity }}>
+    <span
+      className="grid h-3.5 w-3.5 shrink-0 place-items-center"
+      style={{ opacity }}
+    >
       <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" aria-hidden>
         {meta.encoding.kind === "field" ? (
           <>
@@ -245,15 +263,37 @@ function LayerGlyph({ meta, dimmed }: { meta: LayerMeta; dimmed: boolean }) {
                 <stop offset="100%" stopColor={color} stopOpacity="0.9" />
               </linearGradient>
             </defs>
-            <rect x="1" y="3" width="12" height="8" rx="1.5" fill={`url(#g-${meta.id})`} />
+            <rect
+              x="1"
+              y="3"
+              width="12"
+              height="8"
+              rx="1.5"
+              fill={`url(#g-${meta.id})`}
+            />
           </>
         ) : null}
 
         {meta.encoding.kind === "band" ? (
           <>
-            <rect x="1" y="4" width="12" height="6" rx="1" fill={color} fillOpacity="0.25" />
+            <rect
+              x="1"
+              y="4"
+              width="12"
+              height="6"
+              rx="1"
+              fill={color}
+              fillOpacity="0.25"
+            />
             <line x1="1" y1="4" x2="13" y2="4" stroke={color} strokeWidth="1" />
-            <line x1="1" y1="10" x2="13" y2="10" stroke={color} strokeWidth="1" />
+            <line
+              x1="1"
+              y1="10"
+              x2="13"
+              y2="10"
+              stroke={color}
+              strokeWidth="1"
+            />
           </>
         ) : null}
 
@@ -270,28 +310,77 @@ function LayerGlyph({ meta, dimmed }: { meta: LayerMeta; dimmed: boolean }) {
         ) : null}
 
         {meta.encoding.kind === "marker" ? (
-          <line x1="1" y1="7" x2="13" y2="7" stroke={color} strokeWidth="1.4" strokeDasharray="3 2" />
+          <line
+            x1="1"
+            y1="7"
+            x2="13"
+            y2="7"
+            stroke={color}
+            strokeWidth="1.4"
+            strokeDasharray="3 2"
+          />
         ) : null}
 
         {meta.encoding.kind === "contour" ? (
           <>
-            <path d="M1 10 Q4 4 7 7 T13 5" fill="none" stroke={color} strokeWidth="1.2" />
-            <path d="M1 12 Q4 7 7 10 T13 8" fill="none" stroke={color} strokeWidth="0.8" opacity="0.6" />
+            <path
+              d="M1 10 Q4 4 7 7 T13 5"
+              fill="none"
+              stroke={color}
+              strokeWidth="1.2"
+            />
+            <path
+              d="M1 12 Q4 7 7 10 T13 8"
+              fill="none"
+              stroke={color}
+              strokeWidth="0.8"
+              opacity="0.6"
+            />
           </>
         ) : null}
 
         {meta.encoding.kind === "arrows" ? (
           <>
-            <line x1="1" y1="7" x2="10" y2="7" stroke={color} strokeWidth="1.2" />
+            <line
+              x1="1"
+              y1="7"
+              x2="10"
+              y2="7"
+              stroke={color}
+              strokeWidth="1.2"
+            />
             <polygon points="13,7 9,5 9,9" fill={color} />
           </>
         ) : null}
 
         {meta.encoding.kind === "hatch" ? (
           <>
-            <rect x="1" y="3" width="12" height="8" rx="1" fill="none" stroke={color} strokeWidth="1" />
-            <line x1="2" y1="10" x2="6" y2="4" stroke={color} strokeWidth="0.9" />
-            <line x1="6" y1="10" x2="10" y2="4" stroke={color} strokeWidth="0.9" />
+            <rect
+              x="1"
+              y="3"
+              width="12"
+              height="8"
+              rx="1"
+              fill="none"
+              stroke={color}
+              strokeWidth="1"
+            />
+            <line
+              x1="2"
+              y1="10"
+              x2="6"
+              y2="4"
+              stroke={color}
+              strokeWidth="0.9"
+            />
+            <line
+              x1="6"
+              y1="10"
+              x2="10"
+              y2="4"
+              stroke={color}
+              strokeWidth="0.9"
+            />
           </>
         ) : null}
       </svg>

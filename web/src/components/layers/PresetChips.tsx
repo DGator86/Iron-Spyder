@@ -5,7 +5,11 @@ import { PRESETS } from "@/lib/layers";
 import { cn } from "@/lib/utils";
 import { useLayerStore } from "@/store/layerStore";
 import { useViewStore } from "@/store/viewStore";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 /**
  * Weather-map presets. Horizontally scrollable so the row never wraps and never

@@ -28,11 +28,15 @@ export function PayoffSpark({
     const yMax = Math.max(...ys);
     const ySpan = Math.max(1e-6, yMax - yMin);
 
-    const toX = (price: number) => ((price - xMin) / Math.max(1e-6, xMax - xMin)) * 100;
+    const toX = (price: number) =>
+      ((price - xMin) / Math.max(1e-6, xMax - xMin)) * 100;
     const toY = (payoff: number) => 24 - ((payoff - yMin) / ySpan) * 22 - 1;
 
     const d = curve
-      .map((point, i) => `${i === 0 ? "M" : "L"}${toX(point.price).toFixed(2)},${toY(point.payoff).toFixed(2)}`)
+      .map(
+        (point, i) =>
+          `${i === 0 ? "M" : "L"}${toX(point.price).toFixed(2)},${toY(point.payoff).toFixed(2)}`,
+      )
       .join(" ");
 
     return { d, zeroY: toY(0), hasZero: yMin < 0 && yMax > 0 };
@@ -41,7 +45,12 @@ export function PayoffSpark({
   if (!path) return null;
 
   return (
-    <svg viewBox="0 0 100 24" preserveAspectRatio="none" className={cn(className)} aria-hidden>
+    <svg
+      viewBox="0 0 100 24"
+      preserveAspectRatio="none"
+      className={cn(className)}
+      aria-hidden
+    >
       {path.hasZero ? (
         <line
           x1="0"

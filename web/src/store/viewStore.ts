@@ -3,17 +3,26 @@
 import { create } from "zustand";
 import type { Horizon } from "@/lib/types";
 
-export type TimeWindow = "prev30" | "session" | "next15" | "next30" | "next60" | "eod" | "next-session" | "expiry";
+export type TimeWindow =
+  | "prev30"
+  | "session"
+  | "next15"
+  | "next30"
+  | "next60"
+  | "eod"
+  | "next-session"
+  | "expiry";
 
-export const HORIZONS: Array<{ id: Horizon; label: string; minutes: number }> = [
-  { id: "5m", label: "5M", minutes: 5 },
-  { id: "15m", label: "15M", minutes: 15 },
-  { id: "30m", label: "30M", minutes: 30 },
-  { id: "60m", label: "60M", minutes: 60 },
-  { id: "eod", label: "EOD", minutes: 390 },
-  { id: "1d", label: "1D", minutes: 780 },
-  { id: "expiry", label: "EXPIRY", minutes: 390 },
-];
+export const HORIZONS: Array<{ id: Horizon; label: string; minutes: number }> =
+  [
+    { id: "5m", label: "5M", minutes: 5 },
+    { id: "15m", label: "15M", minutes: 15 },
+    { id: "30m", label: "30M", minutes: 30 },
+    { id: "60m", label: "60M", minutes: 60 },
+    { id: "eod", label: "EOD", minutes: 390 },
+    { id: "1d", label: "1D", minutes: 780 },
+    { id: "expiry", label: "EXPIRY", minutes: 390 },
+  ];
 
 export const PLAYBACK_SPEEDS = [1, 2, 5, 10] as const;
 export type StepMode = "tick" | "1m" | "5m";
@@ -72,9 +81,11 @@ export const useViewStore = create<ViewStore>((set) => ({
   selectTime: (selectedTime) => set({ selectedTime }),
   selectStrategy: (selectedStrategyId) => set({ selectedStrategyId }),
   setPreset: (preset) => set({ preset }),
-  setLive: (live) => set({ live, playing: false, ...(live ? { replayOffset: 0 } : {}) }),
+  setLive: (live) =>
+    set({ live, playing: false, ...(live ? { replayOffset: 0 } : {}) }),
   // Starting playback leaves live mode; stopping it does not silently rejoin.
-  togglePlay: () => set((s) => ({ playing: !s.playing, live: s.playing ? s.live : false })),
+  togglePlay: () =>
+    set((s) => ({ playing: !s.playing, live: s.playing ? s.live : false })),
   setSpeed: (playbackSpeed) => set({ playbackSpeed }),
   setStepMode: (stepMode) => set({ stepMode }),
 
@@ -90,5 +101,6 @@ export const useViewStore = create<ViewStore>((set) => ({
 
   setReplayDate: (replayDate) => set({ replayDate, live: replayDate === null }),
 
-  returnToLive: () => set({ replayOffset: 0, live: true, playing: false, replayDate: null }),
+  returnToLive: () =>
+    set({ replayOffset: 0, live: true, playing: false, replayDate: null }),
 }));

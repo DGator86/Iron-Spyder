@@ -44,7 +44,32 @@ export function price(value: number): string {
 /** Hex -> rgba() with an explicit alpha, for chart series colours. */
 export function alpha(hex: string, a: number): string {
   const clean = hex.replace("#", "");
-  const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+  const full =
+    clean.length === 3
+      ? clean
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : clean;
   const n = parseInt(full, 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+/** Em dash for a value the engine could not supply. */
+export const NA = "—";
+
+/**
+ * Render a possibly-missing number, or the em dash.
+ *
+ * The whole point of the nullable fields on `SystemPayload`: a missing feed has
+ * to *look* missing. Formatting `null` as `0` would put "$0.00" in the equity
+ * tile and "+0.00 (0.00%)" beside the price, both of which read as measurements.
+ */
+export function orNA(
+  value: number | null | undefined,
+  format: (n: number) => string,
+): string {
+  return value === null || value === undefined || Number.isNaN(value)
+    ? NA
+    : format(value);
 }

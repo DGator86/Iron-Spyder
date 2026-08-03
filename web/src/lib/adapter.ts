@@ -14,7 +14,11 @@
  * layer renders as unavailable — it is never filled with a plausible number.
  */
 
-import { buildDensitySurface, smoothField, type HorizonQuantiles } from "./density";
+import {
+  buildDensitySurface,
+  smoothField,
+  type HorizonQuantiles,
+} from "./density";
 import type {
   ForecastChartPayload,
   Horizon,
@@ -66,7 +70,11 @@ function authHeaders(): Record<string, string> {
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
-async function getJson<T>(base: string, path: string, timeoutMs: number): Promise<T | null> {
+async function getJson<T>(
+  base: string,
+  path: string,
+  timeoutMs: number,
+): Promise<T | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -143,6 +151,13 @@ interface EngineGammaProfile {
   vol_trigger: number | null;
 }
 
+interface EnginePerformance {
+  equity: number;
+  realized_pnl_today: number;
+  trades_today: number;
+  drawdown_fraction: number;
+}
+
 interface EngineMarket {
   timestamp: string;
   spot: number;
@@ -184,21 +199,36 @@ export async function fetchLiveSnapshot(
   horizon: Horizon,
   timeoutMs = 4000,
 ): Promise<RadarSnapshot> {
-  const [market, analytics, gammaProfile, forecast, strategiesRaw, health] = await Promise.all([
+  const [
+    market,
+    analytics,
+    gammaProfile,
+    forecast,
+    strategiesRaw,
+    health,
+    performance,
+  ] = await Promise.all([
     getJson<EngineMarket>(base, "/market/current", timeoutMs),
     getJson<EngineAnalytics>(base, "/analytics/current", timeoutMs),
     getJson<EngineGammaProfile>(base, "/analytics/gamma-profile", timeoutMs),
     getJson<EngineForecast>(base, "/forecast/current", timeoutMs),
-    getJson<{ candidates: EngineCandidate[] }>(base, "/strategies/candidates?limit=10", timeoutMs),
+    getJson<{ candidates: EngineCandidate[] }>(
+      base,
+      "/strategies/candidates?limit=10",
+      timeoutMs,
+    ),
     getJson<{ mode: string; kill_switch: string[]; open_positions: number }>(
       base,
       "/health",
       timeoutMs,
     ),
+    getJson<EnginePerformance>(base, "/performance", timeoutMs),
   ]);
 
   if (!market || !forecast) {
-    throw new EngineUnavailable("engine returned no market or forecast payload");
+    throw new EngineUnavailable(
+      "engine returned no market or forecast payload",
+    );
   }
 
   const spot = forecast.spot ?? market.spot;
@@ -215,7 +245,8 @@ export async function fetchLiveSnapshot(
     .filter((h) => h.grid.length > 1)
     .sort((a, b) => a.minutes - b.minutes);
 
-  if (horizons.length === 0) throw new EngineUnavailable("forecast contained no usable quantiles");
+  if (horizons.length === 0)
+    throw new EngineUnavailable("forecast contained no usable quantiles");
 
   const engineHorizon = UI_TO_ENGINE_HORIZON[horizon];
   const horizonMinutes = ENGINE_HORIZON_MINUTES[engineHorizon] ?? 60;
@@ -236,11 +267,16 @@ export async function fetchLiveSnapshot(
   const timeAxis: string[] = [];
   const minutesAxis: number[] = [];
   for (let i = 0; i < TIME_COLUMNS; i += 1) {
-    const offset = -historyMinutes + ((historyMinutes + horizonMinutes) * i) / (TIME_COLUMNS - 1);
+    const offset =
+      -historyMinutes +
+      ((historyMinutes + horizonMinutes) * i) / (TIME_COLUMNS - 1);
     minutesAxis.push(offset);
     timeAxis.push(hhmm(new Date(now.getTime() + offset * 60_000)));
   }
-  const forecastStartIndex = Math.max(0, minutesAxis.findIndex((m) => m > 0));
+  const forecastStartIndex = Math.max(
+    0,
+    minutesAxis.findIndex((m) => m > 0),
+  );
 
   // ---- Field ------------------------------------------------------------
   const built = buildDensitySurface(horizons, minutesAxis, priceAxis, spot);
@@ -257,10 +293,15 @@ export async function fetchLiveSnapshot(
 
   // ---- Strike ladder ----------------------------------------------------
   const nearestHorizon =
-    horizons.find((h) => h.minutes >= horizonMinutes) ?? horizons[horizons.length - 1];
+    horizons.find((h) => h.minutes >= horizonMinutes) ??
+    horizons[horizons.length - 1];
   const touch = forecast.horizons[engineHorizon]?.touch_probabilities ?? {};
   const strikes: StrikeRow[] = [];
-  for (let strike = Math.ceil(priceLow); strike <= Math.floor(priceHigh); strike += 1) {
+  for (
+    let strike = Math.ceil(priceLow);
+    strike <= Math.floor(priceHigh);
+    strike += 1
+  ) {
     strikes.push({
       strike,
       callOi: 0,
@@ -268,7 +309,9 @@ export async function fetchLiveSnapshot(
       callVolume: 0,
       putVolume: 0,
       netGex: curve.length > 0 ? interpolateCurve(curve, strike) : 0,
-      touchProbability: touch[String(strike)] ?? touchFromGrid(nearestHorizon.grid, strike, spot),
+      touchProbability:
+        touch[String(strike)] ??
+        touchFromGrid(nearestHorizon.grid, strike, spot),
       finishAbove: 1 - cdfFromGrid(nearestHorizon.grid, strike),
       signedPremium: 0,
     });
@@ -301,12 +344,18 @@ export async function fetchLiveSnapshot(
       p95: built.bands.p95.map(safeRound),
     },
     levels: {
-      gammaFlip: analytics?.gamma_flip ?? gammaProfile?.nearest_flip ?? undefined,
+      gammaFlip:
+        analytics?.gamma_flip ?? gammaProfile?.nearest_flip ?? undefined,
       callWall: analytics?.call_wall ?? undefined,
       putWall: analytics?.put_wall ?? undefined,
-      volatilityTrigger: analytics?.vol_trigger ?? gammaProfile?.vol_trigger ?? undefined,
-      expectedMoveUpper: analytics ? round2(spot + analytics.expected_move) : undefined,
-      expectedMoveLower: analytics ? round2(spot - analytics.expected_move) : undefined,
+      volatilityTrigger:
+        analytics?.vol_trigger ?? gammaProfile?.vol_trigger ?? undefined,
+      expectedMoveUpper: analytics
+        ? round2(spot + analytics.expected_move)
+        : undefined,
+      expectedMoveLower: analytics
+        ? round2(spot - analytics.expected_move)
+        : undefined,
       pinStrike: analytics?.pin_strike ?? undefined,
     },
     vectors: buildVectors(priceAxis, gexColumn, analytics?.gamma_flip ?? spot),
@@ -319,9 +368,22 @@ export async function fetchLiveSnapshot(
     markers: [{ time: hhmm(now), label: "NOW", kind: "now" }],
   };
 
-  const interpretation = buildInterpretation(forecast, analytics, built, priceAxis, spot);
+  const interpretation = buildInterpretation(
+    forecast,
+    analytics,
+    built,
+    priceAxis,
+    spot,
+  );
   const strategies = (strategiesRaw?.candidates ?? []).map(mapCandidate);
-  const system = buildSystem(market, analytics, forecast, health);
+  const system = buildSystem(
+    market,
+    analytics,
+    forecast,
+    health,
+    performance,
+    gammaProfile?.curve ?? [],
+  );
 
   return { chart, interpretation, strategies, system, source: "live" };
 }
@@ -355,7 +417,12 @@ function mapCandidate(c: EngineCandidate, index: number): StrategyCandidate {
     expectedReturnOnRisk: c.expected_return_on_risk,
     utility: c.utility,
     fillProbability: c.fill_probability,
-    assignmentRisk: c.assignment_risk > 0.66 ? "high" : c.assignment_risk > 0.33 ? "medium" : "low",
+    assignmentRisk:
+      c.assignment_risk > 0.66
+        ? "high"
+        : c.assignment_risk > 0.33
+          ? "medium"
+          : "low",
     rejectionReason: null,
     profitTarget: c.exit_plan?.profit_target_fraction ?? 0.5,
     stopLevel: c.exit_plan?.stop_loss_fraction ?? 2,
@@ -375,14 +442,18 @@ function buildInterpretation(
   spot: number,
 ): InterpretationPayload {
   const probs = Object.entries(forecast.state_probabilities)
-    .map(([state, probability]) => ({ state: state as MarketState, probability }))
+    .map(([state, probability]) => ({
+      state: state as MarketState,
+      probability,
+    }))
     .sort((a, b) => b.probability - a.probability);
 
   const lastIndex = built.bands.p05.length - 1;
   const low = built.bands.p05[lastIndex];
   const high = built.bands.p95[lastIndex];
   const pin = analytics?.pin_strike ?? null;
-  const pinProbability = pin !== null ? (forecast.pin_probabilities?.[String(pin)] ?? 0) : 0;
+  const pinProbability =
+    pin !== null ? (forecast.pin_probabilities?.[String(pin)] ?? 0) : 0;
 
   const callWall = analytics?.call_wall ?? null;
   const putWall = analytics?.put_wall ?? null;
@@ -396,8 +467,12 @@ function buildInterpretation(
     expectedRangeHigh: round2(high),
     highestDensityLow: round2(built.bands.p25[lastIndex]),
     highestDensityHigh: round2(built.bands.p75[lastIndex]),
-    upsideBreakoutProbability: callWall ? 1 - cdfLinear(built.bands, lastIndex, callWall) : 0,
-    downsideBreakdownProbability: putWall ? cdfLinear(built.bands, lastIndex, putWall) : 0,
+    upsideBreakoutProbability: callWall
+      ? 1 - cdfLinear(built.bands, lastIndex, callWall)
+      : 0,
+    downsideBreakdownProbability: putWall
+      ? cdfLinear(built.bands, lastIndex, putWall)
+      : 0,
     pinProbability,
     pinStrike: pin ?? spot,
     modelAgreement: 1 - (forecast.model_disagreement ?? 0),
@@ -426,17 +501,54 @@ function derivedDrivers(analytics: EngineAnalytics | null): string[] {
   if (analytics.gamma_flip !== null && analytics.spot < analytics.gamma_flip) {
     drivers.push("Spot below gamma flip");
   }
-  if (analytics.atm_iv > analytics.realized_vol) drivers.push("IV above realized");
+  if (analytics.atm_iv > analytics.realized_vol)
+    drivers.push("IV above realized");
   else drivers.push("Realized above IV");
-  if (analytics.expected_move_utilization > 0.7) drivers.push("Expected move largely consumed");
+  if (analytics.expected_move_utilization > 0.7)
+    drivers.push("Expected move largely consumed");
   return drivers;
+}
+
+/**
+ * Local slope of the dealer gamma curve at spot, in units of GEX-billions per
+ * dollar of underlying.
+ *
+ * Computed from `/analytics/gamma-profile`, which is a real curve the engine
+ * already returns, rather than left at zero. A central difference across the
+ * two samples bracketing spot: the curve is smooth on the scale of the sample
+ * spacing, so the two-sided estimate is stable where a one-sided one would pick
+ * up the lattice. Returns null when spot sits outside the sampled range, since
+ * an extrapolated slope would be an invention.
+ */
+function gammaSlopeAtSpot(
+  curve: Array<{ spot: number; gex: number }>,
+  spot: number,
+): number | null {
+  if (curve.length < 3) return null;
+  const sorted = [...curve].sort((a, b) => a.spot - b.spot);
+  if (spot <= sorted[0].spot || spot >= sorted[sorted.length - 1].spot)
+    return null;
+
+  let i = 0;
+  while (i < sorted.length - 1 && sorted[i + 1].spot < spot) i += 1;
+  const lo = sorted[Math.max(0, i - 1)];
+  const hi = sorted[Math.min(sorted.length - 1, i + 2)];
+  const span = hi.spot - lo.spot;
+  if (span <= 0) return null;
+  return round2(((hi.gex - lo.gex) / span / 1e9) * 100) / 100;
 }
 
 function buildSystem(
   market: EngineMarket,
   analytics: EngineAnalytics | null,
   forecast: EngineForecast,
-  health: { mode: string; kill_switch: string[]; open_positions: number } | null,
+  health: {
+    mode: string;
+    kill_switch: string[];
+    open_positions: number;
+  } | null,
+  performance: EnginePerformance | null,
+  gammaCurve: Array<{ spot: number; gex: number }>,
 ): SystemPayload {
   const spot = forecast.spot ?? market.spot;
   return {
@@ -445,32 +557,42 @@ function buildSystem(
     killSwitch: (health?.kill_switch?.length ?? 0) > 0,
     killSwitchReasons: health?.kill_switch ?? [],
     spot,
-    change: 0,
-    changePercent: 0,
-    vwap: 0,
-    ivRank: 0,
+    // The engine exposes no session open, previous close, or VWAP, and no IV
+    // history to rank against. Null renders as an em dash; zero would render as
+    // a flat tape and a 0.0% IV rank, both of which are assertions.
+    change: null,
+    changePercent: null,
+    vwap: null,
+    ivRank: null,
     atmIv: (analytics?.atm_iv ?? 0) * 100,
     realizedVol: (analytics?.realized_vol ?? 0) * 100,
     dte: market.expirations?.[0] ?? "",
     serverTime: hhmm(new Date(forecast.timestamp)),
-    equity: 0,
-    dailyPnl: 0,
-    dailyPnlPercent: 0,
-    openRisk: 0,
-    buyingPower: 0,
-    dailyLossLimit: 0,
-    maxLossPerTrade: 0,
+    equity: performance?.equity ?? null,
+    dailyPnl: performance?.realized_pnl_today ?? null,
+    dailyPnlPercent:
+      performance && performance.equity > 0
+        ? round2((performance.realized_pnl_today / performance.equity) * 100)
+        : null,
+    // /performance reports what happened, not the configured bounds. Reporting
+    // a limit of 0 would draw a full loss-limit meter on an untouched account.
+    openRisk: null,
+    buyingPower: null,
+    dailyLossLimit: null,
+    maxLossPerTrade: null,
     openPositions: health?.open_positions ?? 0,
-    maxOpenPositions: 0,
+    maxOpenPositions: null,
     dataQuality: market.data_quality,
     modelConfidence: forecast.confidence,
     netGex: (analytics?.gex_total ?? 0) / 1e9,
-    gexSlope: 0,
+    gexSlope: gammaSlopeAtSpot(gammaCurve, spot),
     dexTrend: (analytics?.dex_total ?? 0) / 1e6,
     vannaExposure: (analytics?.vex_total ?? 0) / 1e9,
     charmExposure: (analytics?.cex_total ?? 0) / 1e9,
     expectedMove: analytics?.expected_move ?? 0,
-    expectedMovePercent: analytics ? round2((analytics.expected_move / spot) * 100) : 0,
+    expectedMovePercent: analytics
+      ? round2((analytics.expected_move / spot) * 100)
+      : 0,
     emUtilization: analytics?.expected_move_utilization ?? 0,
   };
 }
@@ -483,9 +605,18 @@ function buildVectors(priceAxis: number[], gexColumn: number[], flip: number) {
   for (let t = 0; t < TIME_COLUMNS; t += timeStride) {
     for (let p = 0; p < priceAxis.length; p += priceStride) {
       const g = gexColumn[p];
-      const toward = g >= 0 ? Math.sign(flip - priceAxis[p]) : Math.sign(priceAxis[p] - flip);
+      const toward =
+        g >= 0
+          ? Math.sign(flip - priceAxis[p])
+          : Math.sign(priceAxis[p] - flip);
       const strength = Math.min(1, Math.abs(g) / peak);
-      vectors.push({ timeIndex: t, priceIndex: p, dx: 1, dy: toward * strength, strength });
+      vectors.push({
+        timeIndex: t,
+        priceIndex: p,
+        dx: 1,
+        dy: toward * strength,
+        strength,
+      });
     }
   }
   return vectors;
@@ -495,11 +626,15 @@ function buildVectors(priceAxis: number[], gexColumn: number[], flip: number) {
 // Numeric helpers
 // ---------------------------------------------------------------------------
 
-function interpolateCurve(curve: Array<{ spot: number; gex: number }>, price: number): number {
+function interpolateCurve(
+  curve: Array<{ spot: number; gex: number }>,
+  price: number,
+): number {
   if (curve.length === 0) return 0;
   const sorted = [...curve].sort((a, b) => a.spot - b.spot);
   if (price <= sorted[0].spot) return sorted[0].gex;
-  if (price >= sorted[sorted.length - 1].spot) return sorted[sorted.length - 1].gex;
+  if (price >= sorted[sorted.length - 1].spot)
+    return sorted[sorted.length - 1].gex;
   for (let i = 0; i < sorted.length - 1; i += 1) {
     const a = sorted[i];
     const b = sorted[i + 1];
@@ -515,7 +650,8 @@ function interpolateCurve(curve: Array<{ spot: number; gex: number }>, price: nu
 function cdfFromGrid(grid: Array<[number, number]>, price: number): number {
   const byPrice = [...grid].sort((a, b) => a[1] - b[1]);
   if (price <= byPrice[0][1]) return byPrice[0][0];
-  if (price >= byPrice[byPrice.length - 1][1]) return byPrice[byPrice.length - 1][0];
+  if (price >= byPrice[byPrice.length - 1][1])
+    return byPrice[byPrice.length - 1][0];
   for (let i = 0; i < byPrice.length - 1; i += 1) {
     const [t0, v0] = byPrice[i];
     const [t1, v1] = byPrice[i + 1];
@@ -527,14 +663,22 @@ function cdfFromGrid(grid: Array<[number, number]>, price: number): number {
   return 1;
 }
 
-function touchFromGrid(grid: Array<[number, number]>, level: number, spot: number): number {
+function touchFromGrid(
+  grid: Array<[number, number]>,
+  level: number,
+  spot: number,
+): number {
   const c = cdfFromGrid(grid, level);
   const beyond = level >= spot ? 1 - c : c;
   return Math.min(1, Math.max(0, 2 * beyond));
 }
 
 /** CDF at `level` inferred from the quantile bands at a single time index. */
-function cdfLinear(bands: Record<string, number[]>, index: number, level: number): number {
+function cdfLinear(
+  bands: Record<string, number[]>,
+  index: number,
+  level: number,
+): number {
   const pairs: Array<[number, number]> = [
     [0.05, bands.p05[index]],
     [0.1, bands.p10[index]],

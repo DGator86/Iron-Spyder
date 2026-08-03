@@ -5,7 +5,11 @@ import * as React from "react";
 
 import { Button, Segmented } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
-import { PLAYBACK_SPEEDS, useViewStore, type StepMode } from "@/store/viewStore";
+import {
+  PLAYBACK_SPEEDS,
+  useViewStore,
+  type StepMode,
+} from "@/store/viewStore";
 
 /**
  * Radar-loop transport.
@@ -48,12 +52,7 @@ export function TimelineControls({ className }: { className?: string }) {
   const REPLAY_SPAN = 240; // minutes of scrub range
 
   return (
-    <div
-      className={cn(
-        "panel flex items-center gap-3 px-3 py-2",
-        className,
-      )}
-    >
+    <div className={cn("panel flex items-center gap-3 px-3 py-2", className)}>
       <div className="flex items-center gap-1">
         <Button
           size="icon"
@@ -69,7 +68,11 @@ export function TimelineControls({ className }: { className?: string }) {
           onClick={togglePlay}
           aria-label={playing ? "Pause" : "Play"}
         >
-          {playing ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+          {playing ? (
+            <Pause className="h-3 w-3" />
+          ) : (
+            <Play className="h-3 w-3" />
+          )}
         </Button>
         <Button
           size="icon"
@@ -139,7 +142,10 @@ export function TimelineControls({ className }: { className?: string }) {
         size="xs"
         ariaLabel="Playback speed"
         className="hidden md:inline-flex"
-        options={PLAYBACK_SPEEDS.map((s) => ({ value: String(s), label: `${s}×` }))}
+        options={PLAYBACK_SPEEDS.map((s) => ({
+          value: String(s),
+          label: `${s}×`,
+        }))}
         value={String(playbackSpeed)}
         onChange={(v) => setSpeed(Number(v))}
       />

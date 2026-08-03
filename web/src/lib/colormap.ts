@@ -61,7 +61,10 @@ export const DISAGREEMENT_RAMP: Ramp = [
 ];
 
 /** Sample a ramp at t in [0,1], returning premultiplied-safe RGBA bytes. */
-export function sampleRamp(ramp: Ramp, t: number): [number, number, number, number] {
+export function sampleRamp(
+  ramp: Ramp,
+  t: number,
+): [number, number, number, number] {
   const x = Math.min(1, Math.max(0, t));
   if (x <= ramp[0][0]) return [ramp[0][1], ramp[0][2], ramp[0][3], ramp[0][4]];
   const last = ramp[ramp.length - 1];
@@ -100,7 +103,10 @@ export function buildLut(ramp: Ramp): Uint8ClampedArray {
 /** CSS gradient string for legends and swatches. */
 export function rampToCss(ramp: Ramp, direction = "to right"): string {
   const stops = ramp
-    .map(([pos, r, g, b, a]) => `rgba(${r},${g},${b},${(a / 255).toFixed(3)}) ${(pos * 100).toFixed(1)}%`)
+    .map(
+      ([pos, r, g, b, a]) =>
+        `rgba(${r},${g},${b},${(a / 255).toFixed(3)}) ${(pos * 100).toFixed(1)}%`,
+    )
     .join(", ");
   return `linear-gradient(${direction}, ${stops})`;
 }
