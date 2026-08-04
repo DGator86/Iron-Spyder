@@ -15,6 +15,7 @@ with a recorded reason, never a partially evaluated trade.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from uuid import uuid4
@@ -36,6 +37,8 @@ from spy_der.models.forecast_engine import ForecastEngine
 from spy_der.optimizer.engine import OptimizationResult, StrategyOptimizer
 from spy_der.risk.engine import PortfolioState, RiskEngine
 from spy_der.risk.sizing import SizingResult
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
