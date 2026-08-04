@@ -51,8 +51,9 @@ echarts.use([
  * never on a narrow viewport — holding it open unconditionally cost a third of
  * the canvas on a phone.
  */
-const PROFILE_WIDTH = 118;
-const PROFILE_MIN_VIEWPORT = 680;
+const PROFILE_WIDTH = 108;
+/** Keep the GEX histogram visible on tablet; phone uses the Layers tab profile. */
+const PROFILE_MIN_VIEWPORT = 520;
 
 const PROFILE_LAYERS: LayerId[] = [
   "gex-profile",
@@ -400,8 +401,8 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
   pushField(args.densityImage, payload.forecastStartIndex);
   pushField(args.disagreementImage, payload.forecastStartIndex);
 
-  // Forecast boundary shading — realized territory sits slightly darker.
-  if (geometry.plotWidth > 0) {
+  // Realized window tint — keep it light so the pressure field stays continuous.
+  if (geometry.plotWidth > 0 && args.densityImage) {
     graphics.push({
       type: "rect",
       z: -30,
@@ -415,7 +416,7 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
         ),
         height: geometry.plotHeight,
       },
-      style: { fill: "rgba(3, 7, 14, 0.45)" },
+      style: { fill: "rgba(3, 7, 14, 0.35)" },
     });
   }
 
@@ -605,12 +606,10 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
     });
   }
 
-  // ---- Flow arrows ------------------------------------------------------
+  // ---- Flow arrows — pressure gradients that move price -----------------
   if (isOn("gex-arrows")) {
     const o = opacityFor("gex-arrows");
-    // The payload's arrow lattice is fixed, so thin it against the *pixel*
-    // spacing actually available. Without this the field turns into hatching on
-    // a narrow viewport.
+    // Thin against pixel spacing so the field stays a vector lattice, not hatch.
     const times = [...new Set(payload.vectors.map((v) => v.timeIndex))].sort(
       (a, b) => a - b,
     );
@@ -619,8 +618,8 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
     );
     const xSpacing = geometry.plotWidth / Math.max(1, times.length);
     const ySpacing = geometry.plotHeight / Math.max(1, prices.length);
-    const kx = Math.max(1, Math.ceil(56 / Math.max(1, xSpacing)));
-    const ky = Math.max(1, Math.ceil(42 / Math.max(1, ySpacing)));
+    const kx = Math.max(1, Math.ceil(40 / Math.max(1, xSpacing)));
+    const ky = Math.max(1, Math.ceil(32 / Math.max(1, ySpacing)));
     const keepTimes = new Set(times.filter((_, i) => i % kx === 0));
     const keepPrices = new Set(prices.filter((_, i) => i % ky === 0));
 
@@ -631,23 +630,41 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
       z: 6,
       data: payload.vectors
         .filter(
-          (v) => keepTimes.has(v.timeIndex) && keepPrices.has(v.priceIndex),
+          (v) =>
+            keepTimes.has(v.timeIndex) &&
+            keepPrices.has(v.priceIndex) &&
+            v.strength > 0.08,
         )
         .map((v) => [
           v.timeIndex,
           payload.priceAxis[v.priceIndex],
+          v.dx,
           v.dy,
           v.strength,
         ]),
       renderItem: (_params: unknown, api: ArrowApi) => {
         const x = api.value(0);
         const price = api.value(1);
-        const dy = api.value(2);
-        const strength = api.value(3);
+        const dx = api.value(2);
+        const dy = api.value(3);
+        const strength = api.value(4);
         const point = api.coord([x, price]);
-        const length = 9 + strength * 7;
-        const tilt = dy * 5;
-        const opacity = 0.18 + strength * 0.6;
+
+        // Primary motion is vertical (price). Mild +x lean keeps the CFD look.
+        const len = 7 + strength * 11;
+        const mag = Math.hypot(dx * 0.35, dy) || 1;
+        const ux = (dx * 0.35) / mag;
+        const uy = -dy / mag; // screen y grows downward
+        const x1 = point[0] - ux * len * 0.45;
+        const y1 = point[1] - uy * len * 0.45;
+        const x2 = point[0] + ux * len * 0.55;
+        const y2 = point[1] + uy * len * 0.55;
+        const opacity = 0.45 + strength * 0.5;
+        // Dark ink on warm cells, deep teal on cool cells — readable on both.
+        const color = dy >= 0 ? "#042F2E" : "#020617";
+        const head = 3.4 + strength * 1.6;
+        const px = -uy;
+        const py = ux;
 
         return {
           type: "group",
@@ -655,24 +672,22 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
           children: [
             {
               type: "line",
-              shape: {
-                x1: point[0] - length,
-                y1: point[1] - tilt,
-                x2: point[0] + length,
-                y2: point[1] + tilt,
+              shape: { x1, y1, x2, y2 },
+              style: {
+                stroke: alpha(color, opacity * o),
+                lineWidth: 1 + strength * 0.6,
               },
-              style: { stroke: alpha("#C7D6EC", opacity * o), lineWidth: 1 },
             },
             {
               type: "polygon",
               shape: {
                 points: [
-                  [point[0] + length, point[1] + tilt],
-                  [point[0] + length - 4, point[1] + tilt - 2.4],
-                  [point[0] + length - 4, point[1] + tilt + 2.4],
+                  [x2, y2],
+                  [x2 - ux * head + px * head * 0.55, y2 - uy * head + py * head * 0.55],
+                  [x2 - ux * head - px * head * 0.55, y2 - uy * head - py * head * 0.55],
                 ],
               },
-              style: { fill: alpha("#C7D6EC", opacity * o) },
+              style: { fill: alpha(color, opacity * o) },
             },
           ],
         };
@@ -728,7 +743,10 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
       showSymbol: false,
       silent: true,
       z: 8,
-      lineStyle: { width: 1.4, color: alpha("#FBBF24", opacityFor("vwap")) },
+      lineStyle: {
+        width: 1.8,
+        color: alpha("#FACC15", opacityFor("vwap")),
+      },
       animation: false,
     });
   }
@@ -742,8 +760,23 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
       silent: true,
       z: 11,
       lineStyle: {
-        width: 1.8,
-        color: alpha("#E6EDF7", opacityFor("spy-price")),
+        width: 2.2,
+        color: alpha("#0A0A0A", opacityFor("spy-price")),
+        shadowBlur: 0,
+      },
+      animation: false,
+    });
+    // Hairline highlight so the path stays readable on dark red/blue cells.
+    series.push({
+      type: "line",
+      name: "SPY Price Edge",
+      data: alignToAxis(payload.historicalPrice, payload.timeAxis),
+      showSymbol: false,
+      silent: true,
+      z: 11.5,
+      lineStyle: {
+        width: 1.1,
+        color: alpha("#F8FAFC", 0.92 * opacityFor("spy-price")),
       },
       animation: false,
     });
@@ -752,21 +785,46 @@ function buildOption(args: BuildArgs): echarts.EChartsCoreOption {
   // ---- Right-margin profile --------------------------------------------
   const profileSeries: Record<string, unknown>[] = [];
   if (isOn("gex-profile")) {
+    const o = opacityFor("gex-profile");
+    const peak = Math.max(
+      ...payload.gexProfile.map((g) => Math.abs(g.gex)),
+      1e-6,
+    );
+    // Diverging histogram on the right edge (blue − / red +).
     profileSeries.push({
-      type: "line",
+      type: "custom",
       name: "GEX Profile",
       xAxisIndex: 1,
       yAxisIndex: 1,
-      data: payload.gexProfile.map((g) => [g.gex, g.price]),
-      showSymbol: false,
       silent: true,
-      lineStyle: {
-        width: 1.2,
-        color: alpha("#FBBF24", opacityFor("gex-profile")),
-      },
-      areaStyle: {
-        color: alpha("#FBBF24", 0.12 * opacityFor("gex-profile")),
-        origin: "start",
+      data: payload.gexProfile.map((g) => [g.gex, g.price]),
+      renderItem: (_params: unknown, api: ArrowApi) => {
+        const gex = api.value(0);
+        const price = api.value(1);
+        const start = api.coord([0, price]);
+        const end = api.coord([gex, price]);
+        const half = Math.max(
+          1.1,
+          (geometry.plotHeight / Math.max(payload.gexProfile.length, 1)) * 0.45,
+        );
+        const x = Math.min(start[0], end[0]);
+        const width = Math.max(1.5, Math.abs(end[0] - start[0]));
+        return {
+          type: "rect",
+          silent: true,
+          shape: {
+            x,
+            y: start[1] - half,
+            width,
+            height: half * 2,
+          },
+          style: {
+            fill: alpha(
+              gex >= 0 ? "#EF4444" : "#3B82F6",
+              (0.35 + 0.55 * Math.min(1, Math.abs(gex) / peak)) * o,
+            ),
+          },
+        };
       },
       animation: false,
     });

@@ -599,8 +599,8 @@ function buildSystem(
 
 function buildVectors(priceAxis: number[], gexColumn: number[], flip: number) {
   const vectors = [];
-  const priceStride = Math.max(1, Math.floor(priceAxis.length / 14));
-  const timeStride = Math.max(1, Math.floor(TIME_COLUMNS / 22));
+  const priceStride = Math.max(1, Math.floor(priceAxis.length / 18));
+  const timeStride = Math.max(1, Math.floor(TIME_COLUMNS / 28));
   const peak = Math.max(...gexColumn.map(Math.abs), 1);
   for (let t = 0; t < TIME_COLUMNS; t += timeStride) {
     for (let p = 0; p < priceAxis.length; p += priceStride) {
@@ -610,10 +610,11 @@ function buildVectors(priceAxis: number[], gexColumn: number[], flip: number) {
           ? Math.sign(flip - priceAxis[p])
           : Math.sign(priceAxis[p] - flip);
       const strength = Math.min(1, Math.abs(g) / peak);
+      if (strength < 0.05) continue;
       vectors.push({
         timeIndex: t,
         priceIndex: p,
-        dx: 1,
+        dx: 0.55 + 0.45 * strength,
         dy: toward * strength,
         strength,
       });

@@ -24,12 +24,10 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     label: "GEX Heatmap",
     group: "Gamma & Dealer Positioning",
     description:
-      "Dealer gamma exposure by price. Green = positive gamma (dealers dampen moves). Red = negative gamma (dealers amplify moves).",
-    encoding: { kind: "field", color: "#F87171" },
+      "Dealer gamma pressure by price. Blue = negative GEX (amplifies moves). Red = positive GEX (dampens / pins). This is the field that moves price.",
+    encoding: { kind: "field", color: "#3B82F6" },
     heavy: true,
-    // Subordinate to the forecast field by default: GEX is context for the
-    // probability plume, and at parity it simply erases it.
-    defaultOpacity: 0.5,
+    defaultOpacity: 0.95,
   },
   {
     id: "iv-surface",
@@ -111,9 +109,9 @@ export const LAYER_CATALOGUE: LayerMeta[] = [
     label: "Gamma Flow Arrows",
     group: "Gamma & Dealer Positioning",
     description:
-      "Direction and strength of dealer hedging pressure. Arrows point toward the price dealers are pushed to hedge into.",
-    encoding: { kind: "arrows", color: "#94A6C0" },
-    defaultOpacity: 0.75,
+      "Pressure gradients that move price. Arrows point the way dealer hedging pushes spot — toward the flip in +GEX, away from it in −GEX.",
+    encoding: { kind: "arrows", color: "#0F172A" },
+    defaultOpacity: 0.9,
   },
 
   // ---- Bands ------------------------------------------------------------
@@ -288,16 +286,19 @@ export const LAYER_GROUPS: LayerGroup[] = [
   "Model Diagnostics",
 ];
 
-/** Brief section 3: layers lit on first paint. */
+/**
+ * First paint = pressure desk from the reference:
+ * GEX field + flow arrows + walls/flip + price/VWAP + right-edge profile.
+ * Forecast plume is opt-in (Full Model / Volatility presets).
+ */
 export const DEFAULT_ACTIVE: LayerId[] = [
-  "spy-price",
-  "forecast-density",
   "gex-heatmap",
   "gex-arrows",
+  "gex-profile",
   "gamma-flip",
   "call-wall",
   "put-wall",
-  "forecast-median",
+  "spy-price",
   "vwap",
 ];
 
@@ -314,6 +315,21 @@ export interface Preset {
 
 export const PRESETS: Preset[] = [
   {
+    id: "gamma-map",
+    label: "Pressure",
+    hint: "GEX gradients that move price — the desk default",
+    layers: [
+      "gex-heatmap",
+      "gex-profile",
+      "gamma-flip",
+      "gex-arrows",
+      "call-wall",
+      "put-wall",
+      "spy-price",
+      "vwap",
+    ],
+  },
+  {
     id: "full-model",
     label: "Full Model",
     hint: "Everything the model currently believes, in one frame",
@@ -328,20 +344,6 @@ export const PRESETS: Preset[] = [
       "put-wall",
       "gamma-flip",
       "forecast-median",
-    ],
-  },
-  {
-    id: "gamma-map",
-    label: "Gamma Map",
-    hint: "Dealer positioning and where it flips",
-    layers: [
-      "gex-heatmap",
-      "gex-profile",
-      "gamma-flip",
-      "gex-arrows",
-      "call-wall",
-      "put-wall",
-      "spy-price",
     ],
   },
   {

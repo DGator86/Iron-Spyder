@@ -4,6 +4,9 @@ import { create } from "zustand";
 import { DEFAULT_ACTIVE, LAYER_CATALOGUE, PRESET_BY_ID } from "@/lib/layers";
 import type { LayerId, LayerState } from "@/lib/types";
 
+/** Bump when default layers change so stale client stores re-init. */
+const LAYER_DEFAULTS_VERSION = 2;
+
 function initialLayers(): Record<LayerId, LayerState> {
   const entries = LAYER_CATALOGUE.map((meta, index) => [
     meta.id,
@@ -19,6 +22,7 @@ function initialLayers(): Record<LayerId, LayerState> {
 }
 
 interface LayerStore {
+  defaultsVersion: number;
   layers: Record<LayerId, LayerState>;
   /** Master multiplier applied on top of each layer's own opacity. */
   globalOpacity: number;
@@ -44,8 +48,9 @@ interface LayerStore {
 }
 
 export const useLayerStore = create<LayerStore>((set, get) => ({
+  defaultsVersion: LAYER_DEFAULTS_VERSION,
   layers: initialLayers(),
-  globalOpacity: 0.85,
+  globalOpacity: 1,
 
   toggle: (id) =>
     set((s) => ({
@@ -128,7 +133,7 @@ export const useLayerStore = create<LayerStore>((set, get) => ({
       };
     }),
 
-  resetAll: () => set({ layers: initialLayers(), globalOpacity: 0.85 }),
+  resetAll: () => set({ layers: initialLayers(), globalOpacity: 1 }),
 
   activeIds: () =>
     Object.values(get().layers)

@@ -243,9 +243,10 @@ export function RadarShell() {
 
 function CanvasLegend({ className }: { className?: string }) {
   const items = [
-    { label: "SPY", color: "#E6EDF7", dash: false },
-    { label: "VWAP", color: "#FBBF24", dash: false },
-    { label: "Median", color: "#22D3EE", dash: false },
+    { label: "SPY", color: "#F8FAFC", dash: false },
+    { label: "VWAP", color: "#FACC15", dash: false },
+    { label: "−GEX", color: "#3B82F6", dash: false },
+    { label: "+GEX", color: "#EF4444", dash: false },
     { label: "GEX Flip", color: "#67E8F9", dash: true },
     { label: "Call Wall", color: "#34D399", dash: true },
     { label: "Put Wall", color: "#F87171", dash: true },
