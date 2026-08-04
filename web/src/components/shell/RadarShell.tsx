@@ -7,10 +7,12 @@ import { ForecastCanvas } from "@/components/chart/ForecastCanvas";
 import { TimelineControls } from "@/components/chart/TimelineControls";
 import { LayerPanel } from "@/components/layers/LayerPanel";
 import { PresetChips } from "@/components/layers/PresetChips";
+import { BacktestOptimizer } from "@/components/panels/BacktestOptimizer";
 import { BottomPanel } from "@/components/panels/BottomPanel";
 import { ExposureStrip } from "@/components/panels/ExposureStrip";
 import { InterpretationPanel } from "@/components/panels/InterpretationPanel";
 import { RiskControls } from "@/components/panels/RiskControls";
+import { TradeJournal } from "@/components/panels/TradeJournal";
 import { LeftNav } from "@/components/shell/LeftNav";
 import { MobileTabBar, type MobileTab } from "@/components/shell/MobileTabBar";
 import { TopBar } from "@/components/shell/TopBar";
@@ -27,18 +29,27 @@ const NAV_TO_TAB: Record<string, MobileTab> = {
   analytics: "radar",
   "market-state": "state",
   strategies: "desk",
-  positions: "desk",
+  positions: "journal",
   orders: "desk",
-  backtest: "desk",
+  backtest: "optimize",
   "model-health": "desk",
   logs: "desk",
   risk: "risk",
 };
 
+type DeskView = "radar" | "journal" | "optimize";
+
+function deskViewForNav(navId: string): DeskView {
+  if (navId === "positions") return "journal";
+  if (navId === "backtest") return "optimize";
+  return "radar";
+}
+
 export function RadarShell() {
   const { data, isLoading, isError, error } = useRadar();
   const [mobileTab, setMobileTab] = React.useState<MobileTab>("radar");
   const [navActive, setNavActive] = React.useState("dashboard");
+  const [deskView, setDeskView] = React.useState<DeskView>("radar");
 
   const horizon = useViewStore((s) => s.horizon);
   const setHorizon = useViewStore((s) => s.setHorizon);
@@ -74,6 +85,21 @@ export function RadarShell() {
   const onNavSelect = React.useCallback((id: string) => {
     setNavActive(id);
     setMobileTab(NAV_TO_TAB[id] ?? "radar");
+    setDeskView(deskViewForNav(id));
+  }, []);
+
+  const onMobileTab = React.useCallback((tab: MobileTab) => {
+    setMobileTab(tab);
+    if (tab === "journal") {
+      setDeskView("journal");
+      setNavActive("positions");
+    } else if (tab === "optimize") {
+      setDeskView("optimize");
+      setNavActive("backtest");
+    } else if (tab === "radar") {
+      setDeskView("radar");
+      setNavActive("dashboard");
+    }
   }, []);
 
   if (isError) {
@@ -165,32 +191,48 @@ export function RadarShell() {
 
         {/* —— Desktop / tablet desk —— */}
         <div className="hidden min-h-0 flex-1 flex-col md:flex">
-          {toolbar}
-
-          <div className="flex min-h-0 flex-1 gap-1.5 p-1.5 lg:gap-2 lg:p-2">
-            <InterpretationPanel
-              data={interpretation}
-              className="hidden w-[200px] shrink-0 md:flex xl:w-[240px]"
-            />
-
-            <div className="flex min-w-0 flex-1 flex-col gap-1.5 lg:gap-2">
-              {canvas}
-              <TimelineControls className="shrink-0" />
-              <ExposureStrip system={system} />
-              <BottomPanel
-                chart={chart}
-                strategies={strategies}
-                interpretation={interpretation}
-                system={system}
-                className="h-[200px] shrink-0 lg:h-[220px]"
-              />
+          {deskView === "journal" ? (
+            <div className="min-h-0 flex-1 p-1.5 lg:p-2">
+              <TradeJournal className="h-full" />
             </div>
+          ) : null}
 
-            <div className="hidden w-[240px] shrink-0 flex-col gap-1.5 lg:flex xl:w-[280px]">
-              <LayerPanel className="min-h-0 flex-[1.1]" />
-              <RiskControls system={system} className="min-h-0 flex-1" />
+          {deskView === "optimize" ? (
+            <div className="min-h-0 flex-1 p-1.5 lg:p-2">
+              <BacktestOptimizer className="h-full" />
             </div>
-          </div>
+          ) : null}
+
+          {deskView === "radar" ? (
+            <>
+              {toolbar}
+
+              <div className="flex min-h-0 flex-1 gap-1.5 p-1.5 lg:gap-2 lg:p-2">
+                <InterpretationPanel
+                  data={interpretation}
+                  className="hidden w-[200px] shrink-0 md:flex xl:w-[240px]"
+                />
+
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5 lg:gap-2">
+                  {canvas}
+                  <TimelineControls className="shrink-0" />
+                  <ExposureStrip system={system} />
+                  <BottomPanel
+                    chart={chart}
+                    strategies={strategies}
+                    interpretation={interpretation}
+                    system={system}
+                    className="h-[200px] shrink-0 lg:h-[220px]"
+                  />
+                </div>
+
+                <div className="hidden w-[240px] shrink-0 flex-col gap-1.5 lg:flex xl:w-[280px]">
+                  <LayerPanel className="min-h-0 flex-[1.1]" />
+                  <RiskControls system={system} className="min-h-0 flex-1" />
+                </div>
+              </div>
+            </>
+          ) : null}
         </div>
 
         {/* —— Mobile: one job per tab, nothing dropped —— */}
@@ -223,6 +265,14 @@ export function RadarShell() {
             />
           ) : null}
 
+          {mobileTab === "journal" ? (
+            <TradeJournal className="min-h-0 flex-1 rounded-none border-0" />
+          ) : null}
+
+          {mobileTab === "optimize" ? (
+            <BacktestOptimizer className="min-h-0 flex-1 rounded-none border-0" />
+          ) : null}
+
           {mobileTab === "risk" ? (
             <RiskControls
               system={system}
@@ -234,7 +284,7 @@ export function RadarShell() {
             <LayerPanel className="min-h-0 flex-1 rounded-none border-0" />
           ) : null}
 
-          <MobileTabBar active={mobileTab} onChange={setMobileTab} />
+          <MobileTabBar active={mobileTab} onChange={onMobileTab} />
         </div>
       </main>
     </div>

@@ -1,0 +1,15 @@
+[Unit]
+Description=Iron-Spyder backtest optimize worker (poll queue + schedule)
+After=network-online.target
+
+[Timer]
+# Frequent enough that a manual "Run backtest" click starts within a minute,
+# without burning CPU when the queue is empty.
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=15s
+Persistent=true
+Unit=iron-spyder-optimize.service
+
+[Install]
+WantedBy=timers.target

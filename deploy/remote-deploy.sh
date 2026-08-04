@@ -22,13 +22,14 @@ SVC_USER=iron-spyder
 # per cycle while continuing to run, so the dashboard silently serves stale state.
 SVC_UID=10001
 
-#: Compose-backed live unit + pull-based update timer.
+#: Compose-backed live unit + pull-based update timer + optimize worker.
 SERVICES=(
     iron-spyder
 )
 
 TIMERS=(
     iron-spyder-update
+    iron-spyder-optimize
 )
 
 STATE_DIRS=(
@@ -117,6 +118,9 @@ log "Systemd units"
 install -m 644 "$APP_DIR/deploy/iron-spyder.service" /etc/systemd/system/iron-spyder.service
 install -m 644 "$APP_DIR/deploy/iron-spyder-update.service" /etc/systemd/system/iron-spyder-update.service
 install -m 644 "$APP_DIR/deploy/iron-spyder-update.timer" /etc/systemd/system/iron-spyder-update.timer
+install -m 644 "$APP_DIR/deploy/iron-spyder-optimize.service" /etc/systemd/system/iron-spyder-optimize.service
+install -m 644 "$APP_DIR/deploy/iron-spyder-optimize.timer" /etc/systemd/system/iron-spyder-optimize.timer
+install -m 755 "$APP_DIR/deploy/run-optimize-worker.sh" "$APP_DIR/deploy/run-optimize-worker.sh"
 # Remove legacy per-process units if a prior deploy installed them.
 for legacy in iron-spyder-supervisor iron-spyder-dashboard-api; do
     systemctl disable --now "$legacy" 2>/dev/null || true
@@ -124,6 +128,7 @@ for legacy in iron-spyder-supervisor iron-spyder-dashboard-api; do
 done
 systemctl daemon-reload
 systemctl enable --now iron-spyder-update.timer
+systemctl enable --now iron-spyder-optimize.timer
 
 if [ ! -f "$ENV_FILE" ]; then
     log "Secrets file not found"

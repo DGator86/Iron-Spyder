@@ -23,10 +23,10 @@ const NAV = [
   { id: "analytics", label: "Analytics", icon: Activity },
   { id: "forecast", label: "Forecast", icon: Radar },
   { id: "strategies", label: "Strategies", icon: Target },
-  { id: "positions", label: "Positions", icon: Wallet },
+  { id: "positions", label: "Journal", icon: Wallet },
   { id: "orders", label: "Orders", icon: LineChart },
   { id: "risk", label: "Risk", icon: Shield },
-  { id: "backtest", label: "Backtest", icon: BarChart3 },
+  { id: "backtest", label: "Optimizer", icon: BarChart3 },
   { id: "model-health", label: "Model Health", icon: Heart },
   { id: "logs", label: "Logs", icon: FileText },
 ] as const;

@@ -685,9 +685,9 @@ function ModelHealth({
 function BacktestReplay() {
   return (
     <Empty>
-      Load a recorded session with the timeline scrubber, then press play to
-      watch the layers evolve. Historical tapes are served by the engine&apos;s
-      import pipeline.
+      Training and metrics live on the Optimizer tab (left nav / Train on
+      mobile). Queue a backtest against stored SPY tapes, schedule overnight
+      runs, and compare expectancy to the prior configuration.
     </Empty>
   );
 }
