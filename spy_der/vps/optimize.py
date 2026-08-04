@@ -25,7 +25,69 @@ __all__ = [
     "load_schedule",
     "optimize_paths",
     "save_schedule",
+    "update_job_progress",
 ]
+
+
+def default_progress(
+    *,
+    phase: str = "queued",
+    message: str = "Waiting for worker",
+    current: int = 0,
+    total: int = 0,
+    percent: float = 0.0,
+    detail: str | None = None,
+) -> dict[str, Any]:
+    """Canonical progress payload stored on optimize jobs."""
+    pct = max(0.0, min(100.0, float(percent)))
+    out: dict[str, Any] = {
+        "phase": phase,
+        "message": message,
+        "current": int(current),
+        "total": int(total),
+        "percent": round(pct, 1),
+        "updated_at": datetime.now(tz=UTC).isoformat(),
+    }
+    if detail:
+        out["detail"] = detail
+    return out
+
+
+def update_job_progress(
+    job_path: Path,
+    *,
+    phase: str,
+    message: str,
+    current: int = 0,
+    total: int = 0,
+    percent: float | None = None,
+    detail: str | None = None,
+    status: str | None = None,
+) -> dict[str, Any]:
+    """Persist progress onto a job file so the desk can poll a live bar."""
+    try:
+        job = json.loads(job_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        job = {}
+    if not isinstance(job, dict):
+        job = {}
+    if percent is None:
+        if total > 0:
+            percent = 100.0 * float(current) / float(total)
+        else:
+            percent = float((job.get("progress") or {}).get("percent") or 0.0)
+    job["progress"] = default_progress(
+        phase=phase,
+        message=message,
+        current=current,
+        total=total,
+        percent=percent,
+        detail=detail,
+    )
+    if status:
+        job["status"] = status
+    atomic_write_json(job_path, job)
+    return job
 
 METRIC_KEYS: tuple[str, ...] = (
     "expectancy",
@@ -139,7 +201,16 @@ def enqueue_run(
         "snapshot_limit": int(snapshot_limit or schedule.get("snapshot_limit") or 120),
         "import_path": str(ops["imports"]),
         "error": None,
+        "progress": default_progress(
+            phase="queued",
+            message="Waiting for worker",
+            current=0,
+            total=0,
+            percent=0.0,
+        ),
     }
+    # Stamp created_at into progress for stable polling clocks.
+    job["progress"]["updated_at"] = stamp.isoformat()
     atomic_write_json(ops["jobs"] / f"{job_id}.json", job)
     return job
 

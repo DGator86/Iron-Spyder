@@ -17,7 +17,8 @@ export function useOptimize() {
     refetchInterval: (q) => {
       const job = q.state.data?.activeJob;
       if (job && (job.status === "queued" || job.status === "running")) {
-        return 5_000;
+        // Poll faster while a bar is live so percent/phase stay fresh.
+        return 2_000;
       }
       return 20_000;
     },

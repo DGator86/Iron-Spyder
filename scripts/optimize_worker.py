@@ -40,6 +40,7 @@ from spy_der.vps.optimize import (
     load_schedule,
     optimize_paths,
     save_schedule,
+    update_job_progress,
 )
 from spy_der.vps.paths import state_paths
 
@@ -147,9 +148,21 @@ def _run_one(
 def process_job(job_path: Path, root: Path) -> dict[str, Any]:
     ops = ensure_optimize_dirs(root)
     job = json.loads(job_path.read_text(encoding="utf-8"))
+    started = datetime.now(tz=UTC).isoformat()
     job["status"] = "running"
-    job["started_at"] = datetime.now(tz=UTC).isoformat()
+    job["started_at"] = started
     atomic_write_json(job_path, job)
+    # Load + N config evals. Total is refined once the grid is known.
+    update_job_progress(
+        job_path,
+        phase="loading",
+        message="Loading session tapes",
+        current=0,
+        total=1 + len(GRID),
+        percent=2.0,
+        status="running",
+        detail="Discovering stored SPY sessions",
+    )
 
     try:
         import_root = Path(job.get("import_path") or ops["imports"])
@@ -159,6 +172,15 @@ def process_job(job_path: Path, root: Path) -> dict[str, Any]:
         session_count = max(1, int(job.get("session_count") or 3))
         files = files[-session_count:]
         limit = max(20, int(job.get("snapshot_limit") or 120))
+        update_job_progress(
+            job_path,
+            phase="loading",
+            message=f"Reading {len(files)} session tape(s)",
+            current=0,
+            total=1 + len(GRID),
+            percent=5.0,
+            detail=", ".join(p.stem for p in files[-3:]),
+        )
         snapshots, stats = _load_snapshots(files, limit=limit)
         if not snapshots:
             raise RuntimeError("import produced zero snapshots")
@@ -187,17 +209,62 @@ def process_job(job_path: Path, root: Path) -> dict[str, Any]:
         }
         grid = (baseline_overrides, *[g for g in GRID if g != baseline_overrides])
         seen: set[str] = set()
+        unique_grid: list[dict[str, Any]] = []
         for overrides in grid:
             key = json.dumps(overrides, sort_keys=True)
             if key in seen:
                 continue
             seen.add(key)
+            unique_grid.append(overrides)
+
+        # 1 load step + one step per unique config candidate.
+        total_steps = 1 + len(unique_grid)
+        update_job_progress(
+            job_path,
+            phase="loading",
+            message=f"Loaded {len(snapshots)} snapshots",
+            current=1,
+            total=total_steps,
+            detail=f"{len(unique_grid)} configs to evaluate",
+        )
+
+        for index, overrides in enumerate(unique_grid, start=1):
+            label = "baseline" if index == 1 else f"candidate {index}"
+            detail = (
+                "defaults"
+                if not overrides
+                else ", ".join(f"{k}={v}" for k, v in sorted(overrides.items()))
+            )
+            update_job_progress(
+                job_path,
+                phase="evaluating",
+                message=f"Evaluating {label}",
+                current=1 + index - 1,
+                total=total_steps,
+                detail=detail,
+            )
             log.info("evaluate config %s", overrides or "defaults")
             candidates.append(_run_one(files, snapshots, overrides))
+            update_job_progress(
+                job_path,
+                phase="evaluating",
+                message=f"Finished {label}",
+                current=1 + index,
+                total=total_steps,
+                detail=detail,
+            )
 
         baseline = candidates[0]
         winner = max(candidates, key=lambda c: c["score"])
         improved = winner["score"] > baseline["score"] + 1e-9
+        update_job_progress(
+            job_path,
+            phase="promoting" if improved else "finalizing",
+            message="Promoting winning config" if improved else "No lift — keeping baseline",
+            current=total_steps,
+            total=total_steps,
+            percent=95.0,
+        )
         if improved:
             atomic_write_json(ops["active_config"], winner["config"])
 
@@ -231,12 +298,22 @@ def process_job(job_path: Path, root: Path) -> dict[str, Any]:
             ],
         }
         atomic_write_json(ops["runs"] / f"{job['id']}.json", report)
+        job = json.loads(job_path.read_text(encoding="utf-8"))
         job.update(
             {
                 "status": "completed",
                 "finished_at": finished.isoformat(),
                 "run_id": job["id"],
                 "improved": improved,
+                "progress": {
+                    "phase": "done",
+                    "message": "Backtest complete",
+                    "current": total_steps,
+                    "total": total_steps,
+                    "percent": 100.0,
+                    "detail": "Improved" if improved else "No lift",
+                    "updated_at": finished.isoformat(),
+                },
             }
         )
         atomic_write_json(job_path, job)
@@ -251,10 +328,25 @@ def process_job(job_path: Path, root: Path) -> dict[str, Any]:
         return report
     except Exception as exc:
         log.exception("optimize job %s failed", job.get("id"))
-        job["status"] = "failed"
-        job["finished_at"] = datetime.now(tz=UTC).isoformat()
-        job["error"] = str(exc)
-        atomic_write_json(job_path, job)
+        try:
+            failed = json.loads(job_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            failed = job if isinstance(job, dict) else {}
+        if not isinstance(failed, dict):
+            failed = {}
+        failed["status"] = "failed"
+        failed["finished_at"] = datetime.now(tz=UTC).isoformat()
+        failed["error"] = str(exc)
+        failed["progress"] = {
+            "phase": "failed",
+            "message": "Backtest failed",
+            "current": int((failed.get("progress") or {}).get("current") or 0),
+            "total": int((failed.get("progress") or {}).get("total") or 0),
+            "percent": float((failed.get("progress") or {}).get("percent") or 0.0),
+            "detail": str(exc)[:160],
+            "updated_at": failed["finished_at"],
+        }
+        atomic_write_json(job_path, failed)
         raise
 
 
