@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from spy_der.vps.files import atomic_write_json
-from spy_der.vps.paths import StatePaths, state_paths
+from spy_der.vps.paths import state_paths
 
 __all__ = [
     "METRIC_KEYS",
