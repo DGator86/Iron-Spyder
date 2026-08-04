@@ -11,3 +11,4 @@ dist/
 *.db
 .env
 .DS_Store
+.cursor/
