@@ -38,7 +38,9 @@ def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "mode": STATE.settings.mode.value,
-        "scenario": STATE.scenario_name,
+        "feed": STATE.feed,
+        # Scenario only applies to the seeded generator; null when on Tradier.
+        "scenario": STATE.scenario_name if STATE.feed == "synthetic" else None,
         "kill_switch": list(STATE.kill_switch.reasons),
         "open_positions": STATE.pipeline.portfolio.open_count if STATE.pipeline else 0,
         "last_decision_at": result.timestamp.isoformat() if result else None,

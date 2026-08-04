@@ -321,7 +321,7 @@ export async function fetchLiveSnapshot(
     timestamp: forecast.timestamp,
     spot,
     horizon,
-    expiration: market.expirations?.[0] ?? "0DTE",
+    expiration: formatDteLabel(market.expirations?.[0]),
     timeAxis,
     priceAxis: priceAxis.map(round2),
     forecastStartIndex,
@@ -566,7 +566,7 @@ function buildSystem(
     ivRank: null,
     atmIv: (analytics?.atm_iv ?? 0) * 100,
     realizedVol: (analytics?.realized_vol ?? 0) * 100,
-    dte: market.expirations?.[0] ?? "",
+    dte: formatDteLabel(market.expirations?.[0]),
     serverTime: hhmm(new Date(forecast.timestamp)),
     equity: performance?.equity ?? null,
     dailyPnl: performance?.realized_pnl_today ?? null,
@@ -695,6 +695,34 @@ function cdfLinear(
 
 function hhmm(date: Date): string {
   return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+/**
+ * Engine expirations arrive as ISO timestamps; the desk chrome wants 0DTE/1DTE.
+ * Pass through labels that are already in that form (synthetic / mock).
+ */
+export function formatDteLabel(
+  expiration: string | undefined,
+  now: Date = new Date(),
+): string {
+  if (!expiration) return "—";
+  if (/^\d+DTE$/i.test(expiration) || /^(WEEKLY|Wk)$/i.test(expiration)) {
+    return expiration.toUpperCase() === "WK" ? "WEEKLY" : expiration;
+  }
+  const exp = new Date(expiration);
+  if (Number.isNaN(exp.getTime())) return expiration;
+  const start = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  );
+  const end = Date.UTC(
+    exp.getUTCFullYear(),
+    exp.getUTCMonth(),
+    exp.getUTCDate(),
+  );
+  const days = Math.max(0, Math.round((end - start) / 86_400_000));
+  return `${days}DTE`;
 }
 
 function round2(v: number): number {
