@@ -120,7 +120,7 @@ install -m 644 "$APP_DIR/deploy/iron-spyder-update.service" /etc/systemd/system/
 install -m 644 "$APP_DIR/deploy/iron-spyder-update.timer" /etc/systemd/system/iron-spyder-update.timer
 install -m 644 "$APP_DIR/deploy/iron-spyder-optimize.service" /etc/systemd/system/iron-spyder-optimize.service
 install -m 644 "$APP_DIR/deploy/iron-spyder-optimize.timer" /etc/systemd/system/iron-spyder-optimize.timer
-install -m 755 "$APP_DIR/deploy/run-optimize-worker.sh" "$APP_DIR/deploy/run-optimize-worker.sh"
+chmod 755 "$APP_DIR/deploy/run-optimize-worker.sh"
 # Remove legacy per-process units if a prior deploy installed them.
 for legacy in iron-spyder-supervisor iron-spyder-dashboard-api; do
     systemctl disable --now "$legacy" 2>/dev/null || true
