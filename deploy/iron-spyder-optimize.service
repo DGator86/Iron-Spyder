@@ -1,0 +1,22 @@
+[Unit]
+# Processes queued backtest-optimize jobs (manual button or schedule).
+# CPU-bound; keep it off the live supervisor's critical path by running as a
+# separate oneshot container against the shared state root.
+Description=Iron-Spyder backtest optimize worker
+After=network-online.target docker.service iron-spyder.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/iron-spyder
+EnvironmentFile=-/etc/iron-spyder/iron-spyder.env
+ExecStart=/usr/bin/env bash /opt/iron-spyder/deploy/run-optimize-worker.sh
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=iron-spyder-optimize
+
+SuccessExitStatus=0
+
+[Install]
+WantedBy=multi-user.target

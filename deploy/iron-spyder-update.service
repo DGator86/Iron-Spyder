@@ -8,6 +8,10 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+# Optional: surface DEPLOY_BRANCH / DEPLOY_REF if set. self-update.sh also
+# reads these keys itself; this is belt-and-suspenders for operators who export
+# pins only via the secrets file.
+EnvironmentFile=-/etc/iron-spyder/iron-spyder.env
 ExecStart=/usr/bin/env bash /opt/iron-spyder/deploy/self-update.sh
 
 StandardOutput=journal

@@ -231,6 +231,58 @@ def _to_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _tradier_wall_time(moment: datetime) -> str:
+    """Format a timestamp the way Tradier ``/timesales`` expects (ET wall clock)."""
+    aware = moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+    return aware.astimezone(market_calendar.EASTERN).strftime("%Y-%m-%d %H:%M")
+
+
+def _bars_query_window(moment: datetime, lookback: timedelta) -> tuple[datetime, datetime]:
+    """Pick a Tradier timesales window that cannot land in the future in ET.
+
+    During RTH, return the trailing ``lookback`` inside the open session.
+    Outside hours, return the trailing ``lookback`` of the most recently
+    completed cash session so overnight desk reads still get realized-vol bars.
+    """
+    aware = moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+    aware = aware.astimezone(UTC)
+    session = market_calendar.current_session(aware)
+    if session is not None:
+        end = min(aware, session.close_at)
+        start = max(session.open_at, end - lookback)
+        if start < end:
+            return start, end
+
+    day = aware.astimezone(market_calendar.EASTERN).date()
+    for offset in range(0, 10):
+        prior = market_calendar.session_for(day - timedelta(days=offset))
+        if prior is None or prior.close_at > aware:
+            continue
+        end = prior.close_at
+        start = max(prior.open_at, end - lookback)
+        if start < end:
+            return start, end
+
+    # Last resort: ET-clamped trailing window (still never asks for "future" ET).
+    end = aware
+    return end - lookback, end
+
+
+def _parse_tradier_bar_time(value: Any) -> datetime | None:
+    """Parse a timesales ``time`` as Eastern wall clock, emit UTC."""
+    if value is None:
+        return None
+    text = str(value).strip().replace("T", " ").split("+", 1)[0].split("Z", 1)[0].strip()
+    try:
+        if len(text) >= 19:
+            naive = datetime.strptime(text[:19], "%Y-%m-%d %H:%M:%S")
+        else:
+            naive = datetime.strptime(text[:16], "%Y-%m-%d %H:%M")
+    except ValueError:
+        return None
+    return naive.replace(tzinfo=market_calendar.EASTERN).astimezone(UTC)
+
+
 def _expiration_datetime(day: date) -> datetime:
     """The moment an option on ``day`` actually expires, in UTC.
 
@@ -510,32 +562,49 @@ class TradierProvider(MarketDataProvider):
         Bars feed realized-volatility context, not the decision itself. A
         snapshot without them is degraded but usable, and the data-quality
         engine scores that; failing the whole cycle would be the worse trade.
+
+        Tradier ``/timesales`` timestamps are America/New_York wall times, not
+        UTC. Sending UTC clock values after the US cash close makes ``start``
+        look like it is in the future and Tradier answers HTTP 400 — which is
+        exactly how overnight deploys lost their bars and locked the desk out.
         """
         assert self.client is not None
-        start = moment - self.config.bars_lookback
+        start, end = _bars_query_window(moment, self.config.bars_lookback)
+        params = {
+            "symbol": self.config.symbol,
+            "interval": "1min",
+            "start": _tradier_wall_time(start),
+            "end": _tradier_wall_time(end),
+            "session_filter": "open",
+        }
         try:
-            payload = self.client.get(
-                "/v1/markets/timesales",
-                {
-                    "symbol": self.config.symbol,
-                    "interval": "1min",
-                    "start": start.strftime("%Y-%m-%d %H:%M"),
-                    "end": moment.strftime("%Y-%m-%d %H:%M"),
-                    "session_filter": "open",
-                },
-            )
+            payload = self.client.get("/v1/markets/timesales", params)
         except TradierError as exc:
-            logger.warning("tradier timesales unavailable, continuing without bars: %s", exc)
-            return []
+            # Overnight / weekend windows sometimes reject session_filter=open
+            # even with ET stamps; "all" still returns the cash session prints.
+            logger.warning(
+                "tradier timesales (open) unavailable (%s); retrying session_filter=all",
+                exc,
+            )
+            try:
+                payload = self.client.get(
+                    "/v1/markets/timesales",
+                    {**params, "session_filter": "all"},
+                )
+            except TradierError as retry_exc:
+                logger.warning(
+                    "tradier timesales unavailable, continuing without bars: %s",
+                    retry_exc,
+                )
+                return []
 
         bars: list[PriceBar] = []
         for record in _as_list((payload.get("series") or {}).get("data")):
             close = _to_float(record.get("close"))
             if close <= 0.0:
                 continue
-            try:
-                stamp = datetime.fromisoformat(str(record.get("time"))).replace(tzinfo=UTC)
-            except (TypeError, ValueError):
+            stamp = _parse_tradier_bar_time(record.get("time"))
+            if stamp is None:
                 continue
             bars.append(
                 PriceBar(

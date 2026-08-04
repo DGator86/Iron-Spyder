@@ -282,6 +282,31 @@ def test_missing_bars_degrade_rather_than_fail_the_cycle():
     assert snapshot.option_chain  # the decision inputs survived
 
 
+def test_timesales_uses_eastern_wall_clock_and_prior_session_after_hours():
+    """Overnight UTC clocks must not be sent as naive Tradier start/end.
+
+    That bug produced HTTP 400 ("start must be before …") and emptied bars,
+    which locked the public API out of forecast/analytics.
+    """
+    from spy_der.data.providers.tradier import _bars_query_window, _tradier_wall_time
+
+    overnight = datetime(2026, 8, 4, 6, 10, tzinfo=UTC)
+    start, end = _bars_query_window(overnight, timedelta(minutes=90))
+    assert start < end <= overnight
+    # Prior cash session close 16:00 ET = 20:00 UTC on 2026-08-03.
+    assert end == datetime(2026, 8, 3, 20, 0, tzinfo=UTC)
+    assert _tradier_wall_time(end) == "2026-08-03 16:00"
+    assert _tradier_wall_time(start) == "2026-08-03 14:30"
+
+    routes = full_routes()
+    prov = provider(routes)
+    bars = prov.fetch_bars(overnight)
+    assert bars
+    timesales_urls = [u for u in prov.client.opener.calls if "timesales" in u]
+    assert timesales_urls
+    assert "start=2026-08-03+14%3A30" in timesales_urls[0] or "start=2026-08-03%2014%3A30" in timesales_urls[0]
+
+
 # --------------------------------------------------------------------------
 # configuration
 

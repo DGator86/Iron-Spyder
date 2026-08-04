@@ -17,7 +17,7 @@ def main(argv: list[str] | None = None) -> int:
         print(__doc__)
         print("Commands:")
         print("  supervisor       Run the VPS decision supervisor")
-        print("  dashboard-api    Read-only HTTP API for live state + system status")
+        print("  dashboard-api    Desk/status HTTP API (journal + optimize + live state)")
         print("  status           Print system status JSON for the state root")
         print("  import-spyder    Inspect/load/backtest SPY-DER market recordings")
         return 0 if args else 2

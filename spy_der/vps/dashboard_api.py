@@ -1,9 +1,8 @@
-"""Read-only VPS status API.
+"""VPS status + desk API.
 
-Binds loopback by default. The Vercel frontend (or a tunnel) reaches it through
-a reverse proxy, so the API is never directly internet-facing. It only reads
-the state root — heartbeats, live_state, deploy.json — and never mutates the
-decision pipeline.
+Binds loopback by default. The Vercel BFF reaches it through Caddy. Reads the
+state root for live status and the trade journal; accepts authenticated
+optimize enqueue/schedule writes (job files only — never mutates the live book).
 """
 
 from __future__ import annotations
@@ -14,8 +13,16 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
 from spy_der.vps.heartbeat import write_heartbeat
+from spy_der.vps.journal import build_journal
+from spy_der.vps.optimize import (
+    build_optimize_status,
+    enqueue_run,
+    load_schedule,
+    save_schedule,
+)
 from spy_der.vps.paths import state_paths
 from spy_der.vps.system_status import build_system_status
 
@@ -26,12 +33,25 @@ log = logging.getLogger("spy_der.vps.dashboard_api")
 SERVICE_NAME = "dashboard-api"
 
 
+class OptimizeRunRequest(BaseModel):
+    session_count: int | None = Field(default=None, ge=1, le=30)
+    snapshot_limit: int | None = Field(default=None, ge=20, le=2000)
+
+
+class OptimizeScheduleRequest(BaseModel):
+    enabled: bool | None = None
+    cadence: str | None = Field(default=None, pattern="^(daily|weekly)$")
+    hour_utc: int | None = Field(default=None, ge=0, le=23)
+    session_count: int | None = Field(default=None, ge=1, le=30)
+    snapshot_limit: int | None = Field(default=None, ge=20, le=2000)
+
+
 def create_app(state_root: str | Path) -> FastAPI:
     root = Path(state_root)
     app = FastAPI(
-        title="Iron-Spyder VPS Status",
-        version="0.2.0",
-        description="Read-only status surface for the VPS deployment",
+        title="Iron-Spyder VPS Desk API",
+        version="0.3.0",
+        description="Status, trade journal, and backtest-optimize controls",
     )
 
     @app.get("/health")
@@ -61,11 +81,44 @@ def create_app(state_root: str | Path) -> FastAPI:
         write_heartbeat(root, SERVICE_NAME, interval_seconds=60.0, detail="live-state")
         return data
 
+    @app.get("/journal")
+    def journal(limit: int = 100) -> dict[str, Any]:
+        write_heartbeat(root, SERVICE_NAME, interval_seconds=60.0, detail="journal")
+        return build_journal(root, limit=min(max(limit, 1), 500))
+
+    @app.get("/optimize")
+    def optimize_status() -> dict[str, Any]:
+        write_heartbeat(root, SERVICE_NAME, interval_seconds=60.0, detail="optimize")
+        return build_optimize_status(root)
+
+    @app.post("/optimize/run")
+    def optimize_run(body: OptimizeRunRequest | None = None) -> dict[str, Any]:
+        payload = body or OptimizeRunRequest()
+        job = enqueue_run(
+            root,
+            reason="manual",
+            session_count=payload.session_count,
+            snapshot_limit=payload.snapshot_limit,
+        )
+        write_heartbeat(root, SERVICE_NAME, interval_seconds=60.0, detail="optimize-run")
+        return {"queued": True, "job": job, "status": build_optimize_status(root)}
+
+    @app.get("/optimize/schedule")
+    def optimize_schedule_get() -> dict[str, Any]:
+        return load_schedule(root)
+
+    @app.post("/optimize/schedule")
+    def optimize_schedule_set(body: OptimizeScheduleRequest) -> dict[str, Any]:
+        updates = {k: v for k, v in body.model_dump().items() if v is not None}
+        schedule = save_schedule(updates, root)
+        write_heartbeat(root, SERVICE_NAME, interval_seconds=60.0, detail="optimize-schedule")
+        return {"schedule": schedule, "status": build_optimize_status(root)}
+
     return app
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Iron-Spyder VPS read-only dashboard API")
+    parser = argparse.ArgumentParser(description="Iron-Spyder VPS desk/status API")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8788)
     parser.add_argument(
