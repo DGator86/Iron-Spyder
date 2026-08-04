@@ -17,6 +17,7 @@ from spy_der.vps.optimize import (
     ensure_optimize_dirs,
     load_schedule,
     save_schedule,
+    update_job_progress,
 )
 from spy_der.vps.paths import ensure_state_tree
 
@@ -144,7 +145,23 @@ def test_optimize_enqueue_and_schedule(tmp_path):
     ensure_optimize_dirs(tmp_path)
     job = enqueue_run(tmp_path, reason="manual", session_count=2, snapshot_limit=40)
     assert job["status"] == "queued"
-    assert (tmp_path / "reports" / "optimize" / "jobs" / f"{job['id']}.json").is_file()
+    assert job["progress"]["phase"] == "queued"
+    assert job["progress"]["percent"] == 0.0
+    job_path = tmp_path / "reports" / "optimize" / "jobs" / f"{job['id']}.json"
+    assert job_path.is_file()
+
+    updated = update_job_progress(
+        job_path,
+        phase="evaluating",
+        message="Evaluating candidate 2",
+        current=3,
+        total=6,
+        detail="min_return_on_risk=0.05",
+        status="running",
+    )
+    assert updated["status"] == "running"
+    assert updated["progress"]["percent"] == 50.0
+    assert updated["progress"]["message"] == "Evaluating candidate 2"
 
     schedule = save_schedule(
         {"enabled": True, "cadence": "daily", "hour_utc": 7},
@@ -156,6 +173,7 @@ def test_optimize_enqueue_and_schedule(tmp_path):
 
     status = build_optimize_status(tmp_path)
     assert status["active_job"]["id"] == job["id"]
+    assert status["active_job"]["progress"]["percent"] == 50.0
     assert status["schedule"]["enabled"] is True
 
 

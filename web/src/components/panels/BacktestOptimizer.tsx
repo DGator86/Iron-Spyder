@@ -5,7 +5,7 @@ import * as React from "react";
 
 import { Badge, Button } from "@/components/ui/primitives";
 import { useOptimize } from "@/hooks/useOptimize";
-import type { MetricDelta } from "@/lib/deskTypes";
+import type { MetricDelta, OptimizeJob } from "@/lib/deskTypes";
 import { cn, pct, signedUsd, usd } from "@/lib/utils";
 
 const METRIC_LABELS: Record<string, string> = {
@@ -168,6 +168,8 @@ export function BacktestOptimizer({ className }: { className?: string }) {
                 }
               />
             </div>
+
+            {busy ? <RunProgress job={job} pending={run.isPending} /> : null}
 
             <div className="rounded border border-line bg-deep/40 p-3">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -373,4 +375,84 @@ function InfoCard({
       <div className="truncate text-[10px] text-ink-mute">{sub}</div>
     </div>
   );
+}
+
+function RunProgress({
+  job,
+  pending,
+}: {
+  job: OptimizeJob | null | undefined;
+  pending: boolean;
+}) {
+  const progress = job?.progress ?? null;
+  const status = job?.status ?? null;
+  const percent = clampPercent(
+    progress?.percent ??
+      (status === "running" ? 8 : pending || status === "queued" ? 2 : 0),
+  );
+  const message =
+    progress?.message ||
+    (pending
+      ? "Queueing backtest"
+      : status === "queued"
+        ? "Waiting for worker"
+        : status === "running"
+          ? "Running backtest"
+          : "Working");
+  const stepLabel =
+    progress && progress.total > 0
+      ? `${Math.min(progress.current, progress.total)} / ${progress.total}`
+      : null;
+
+  return (
+    <div
+      className="rounded border border-signal/35 bg-signal/5 px-3 py-3"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[11px] font-semibold text-ink">
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-signal" />
+            <span className="truncate">{message}</span>
+          </div>
+          {progress?.detail ? (
+            <p className="mt-0.5 truncate text-[10px] text-ink-mute">
+              {progress.detail}
+            </p>
+          ) : null}
+        </div>
+        <div className="text-right text-[11px] tabular-nums text-ink">
+          <div className="font-semibold">{percent.toFixed(0)}%</div>
+          {stepLabel ? (
+            <div className="text-[10px] text-ink-mute">Step {stepLabel}</div>
+          ) : null}
+        </div>
+      </div>
+      <div
+        className="h-2 overflow-hidden rounded-sm bg-line/70"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(percent)}
+        aria-label="Backtest progress"
+      >
+        <div
+          className="h-full rounded-sm bg-signal transition-[width] duration-500 ease-out"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      {progress?.phase ? (
+        <div className="mt-1.5 text-[9px] uppercase tracking-[0.14em] text-ink-mute">
+          {progress.phase}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
 }

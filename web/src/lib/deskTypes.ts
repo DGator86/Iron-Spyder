@@ -43,6 +43,16 @@ export interface MetricDelta {
   delta: number | null;
 }
 
+export interface OptimizeProgress {
+  phase: string;
+  message: string;
+  current: number;
+  total: number;
+  percent: number;
+  detail?: string | null;
+  updated_at?: string;
+}
+
 export interface OptimizeJob {
   id: string;
   status: string;
@@ -54,6 +64,7 @@ export interface OptimizeJob {
   snapshot_limit?: number;
   error?: string | null;
   improved?: boolean;
+  progress?: OptimizeProgress | null;
 }
 
 export interface OptimizeRun {
