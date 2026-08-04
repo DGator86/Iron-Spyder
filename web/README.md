@@ -13,23 +13,25 @@ pnpm typecheck
 
 ## Deploying
 
-This app lives in `web/`, not at the repository root. **Set the Vercel project's
-Root Directory to `web`** (Settings → General → Root Directory).
+This app lives in `web/`, not at the repository root. In the Vercel project:
 
-That setting is the mechanism, not a convenience. Left at the repo root, Vercel
-scans it, finds `pyproject.toml`, and infers a Python backend — the build then
-fails asking for a FastAPI entrypoint and offers to deploy
+1. **Settings → Build and Deployment → Root Directory** = `web`
+2. **Framework Preset** = **Next.js**
+3. **Output Directory** = **empty** (clear it if it says `public`)
+
+Leaving Output Directory as `public` makes the build fail with
+`No Output Directory named "public" found` after Next.js finishes — Next.js
+does not emit a `public/` folder as its build output; Vercel serves `.next`.
+
+That Root Directory setting is the mechanism, not a convenience. Left at the
+repo root, Vercel scans it, finds `pyproject.toml`, and infers a Python backend
+— the build then fails asking for a FastAPI entrypoint and offers to deploy
 `spy_der/app/api:app`. **Do not accept that offer.** The engine's API exposes
 unauthenticated mutating routes, including `POST /risk/kill-switch?enabled=false`,
 which would put a public reset for a latched kill switch on the internet. It is
 also stateful by design — the pipeline carries the HMM belief, the flow and wall
 trackers and the open book — so a serverless runtime would discard all of it on
 every cold start, and the SQLite audit store cannot write outside `/tmp`.
-
-A root `vercel.json` is not a substitute here: Vercel's Next.js preset builds
-the app at the Root Directory, and `app/api/chart/route.ts` is server-rendered,
-so it has to be produced as a function by that preset rather than copied from a
-prebuilt output directory.
 
 The engine belongs on the dedicated CPU VPS behind loopback. See
 `../deploy/CPU_VPS.md`.

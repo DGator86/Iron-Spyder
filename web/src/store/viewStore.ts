@@ -66,7 +66,7 @@ export const useViewStore = create<ViewStore>((set) => ({
   horizon: "60m",
   expiration: "0DTE",
   window: "session",
-  preset: "full-model",
+  preset: "gamma-map",
   live: true,
   playing: false,
   playbackSpeed: 1,

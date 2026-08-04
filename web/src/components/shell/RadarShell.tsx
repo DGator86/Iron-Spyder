@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutPanelTop, Layers as LayersIcon, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import * as React from "react";
 
 import { ForecastCanvas } from "@/components/chart/ForecastCanvas";
@@ -8,19 +8,37 @@ import { TimelineControls } from "@/components/chart/TimelineControls";
 import { LayerPanel } from "@/components/layers/LayerPanel";
 import { PresetChips } from "@/components/layers/PresetChips";
 import { BottomPanel } from "@/components/panels/BottomPanel";
+import { ExposureStrip } from "@/components/panels/ExposureStrip";
 import { InterpretationPanel } from "@/components/panels/InterpretationPanel";
+import { RiskControls } from "@/components/panels/RiskControls";
 import { LeftNav } from "@/components/shell/LeftNav";
+import { MobileTabBar, type MobileTab } from "@/components/shell/MobileTabBar";
 import { TopBar } from "@/components/shell/TopBar";
-import { Button, Segmented } from "@/components/ui/primitives";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Segmented } from "@/components/ui/primitives";
 import { useRadar } from "@/hooks/useRadar";
 import type { Horizon } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useLayerStore } from "@/store/layerStore";
 import { HORIZONS, useViewStore } from "@/store/viewStore";
 
+const NAV_TO_TAB: Record<string, MobileTab> = {
+  dashboard: "radar",
+  forecast: "radar",
+  analytics: "radar",
+  "market-state": "state",
+  strategies: "desk",
+  positions: "desk",
+  orders: "desk",
+  backtest: "desk",
+  "model-health": "desk",
+  logs: "desk",
+  risk: "risk",
+};
+
 export function RadarShell() {
   const { data, isLoading, isError, error } = useRadar();
+  const [mobileTab, setMobileTab] = React.useState<MobileTab>("radar");
+  const [navActive, setNavActive] = React.useState("dashboard");
 
   const horizon = useViewStore((s) => s.horizon);
   const setHorizon = useViewStore((s) => s.setHorizon);
@@ -33,9 +51,6 @@ export function RadarShell() {
   const layers = useLayerStore((s) => s.layers);
   const globalOpacity = useLayerStore((s) => s.globalOpacity);
 
-  // Subscribing to the maps rather than calling the store's selectors keeps the
-  // canvas memo keyed on real state — a getter identity never changes and the
-  // chart would not repaint on toggle.
   const activeLayers = React.useMemo(
     () =>
       Object.values(layers)
@@ -55,6 +70,11 @@ export function RadarShell() {
     () => data?.strategies.find((s) => s.strategyId === selectedStrategyId),
     [data?.strategies, selectedStrategyId],
   );
+
+  const onNavSelect = React.useCallback((id: string) => {
+    setNavActive(id);
+    setMobileTab(NAV_TO_TAB[id] ?? "radar");
+  }, []);
 
   if (isError) {
     return (
@@ -88,9 +108,53 @@ export function RadarShell() {
 
   const { chart, interpretation, strategies, system, source } = data;
 
+  const canvas = (
+    <div className="panel relative min-h-0 flex-1 overflow-hidden">
+      <ForecastCanvas
+        payload={chart}
+        activeLayers={activeLayers}
+        opacityFor={opacityFor}
+        selectedStrategy={selectedStrategy}
+        onSelectStrike={selectStrike}
+        onSelectTime={selectTime}
+        className="relative h-full w-full"
+      />
+      <CanvasLegend className="left-2 top-1.5 flex sm:left-[58px]" />
+    </div>
+  );
+
+  const toolbar = (
+    <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-line bg-deep/80 px-2 py-1.5 sm:gap-3 sm:px-3">
+      <Segmented<Horizon>
+        ariaLabel="Forecast horizon"
+        options={HORIZONS.map((h) => ({ value: h.id, label: h.label }))}
+        value={horizon}
+        onChange={setHorizon}
+      />
+      <Segmented<string>
+        size="xs"
+        ariaLabel="Expiration"
+        options={[
+          { value: "0DTE", label: "0DTE" },
+          { value: "1DTE", label: "1DTE" },
+          { value: "WEEKLY", label: "Wk" },
+        ]}
+        value={expiration}
+        onChange={setExpiration}
+      />
+      <PresetChips className="min-w-0 flex-1" />
+    </div>
+  );
+
   return (
     <div className="flex h-full min-h-0">
-      <LeftNav className="hidden lg:flex" />
+      <LeftNav
+        className="hidden lg:flex"
+        active={navActive}
+        onSelect={onNavSelect}
+        paper={system.mode === "paper"}
+        connected={system.connected}
+      />
 
       <main className="flex min-w-0 flex-1 flex-col">
         <TopBar
@@ -99,120 +163,90 @@ export function RadarShell() {
           degradedReason={data.degradedReason}
         />
 
-        {/* Horizon + presets */}
-        <div className="flex shrink-0 items-center gap-3 overflow-x-auto border-b border-line bg-panel/40 px-3 py-1.5">
-          <Segmented<Horizon>
-            ariaLabel="Forecast horizon"
-            options={HORIZONS.map((h) => ({ value: h.id, label: h.label }))}
-            value={horizon}
-            onChange={setHorizon}
-          />
+        {/* —— Desktop / tablet desk —— */}
+        <div className="hidden min-h-0 flex-1 flex-col md:flex">
+          {toolbar}
 
-          <Segmented<string>
-            size="xs"
-            ariaLabel="Expiration"
-            options={[
-              { value: "0DTE", label: "0DTE" },
-              { value: "1DTE", label: "1DTE" },
-              { value: "WEEKLY", label: "Wk" },
-            ]}
-            value={expiration}
-            onChange={setExpiration}
-          />
+          <div className="flex min-h-0 flex-1 gap-1.5 p-1.5 lg:gap-2 lg:p-2">
+            <InterpretationPanel
+              data={interpretation}
+              className="hidden w-[200px] shrink-0 md:flex xl:w-[240px]"
+            />
 
-          <PresetChips className="min-w-0 flex-1" />
-
-          {/* Layers move into a drawer below xl, where the rail would crowd the canvas. */}
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button
-                size="sm"
-                variant="outline"
-                className="shrink-0 xl:hidden"
-              >
-                <LayersIcon className="h-3 w-3" />
-                Layers
-              </Button>
-            </SheetTrigger>
-            <SheetContent title="Layers" side="right" className="p-0">
-              <LayerPanel className="h-full rounded-none border-0 shadow-none" />
-            </SheetContent>
-          </Sheet>
-        </div>
-
-        <div className="flex min-h-0 flex-1 gap-2 p-2">
-          {/* Centre column: canvas dominates, analytics sit beneath it. */}
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <div className="panel relative min-h-0 flex-1 overflow-hidden">
-              <ForecastCanvas
-                payload={chart}
-                activeLayers={activeLayers}
-                opacityFor={opacityFor}
-                selectedStrategy={selectedStrategy}
-                onSelectStrike={selectStrike}
-                onSelectTime={selectTime}
-                className="relative h-full w-full"
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5 lg:gap-2">
+              {canvas}
+              <TimelineControls className="shrink-0" />
+              <ExposureStrip system={system} />
+              <BottomPanel
+                chart={chart}
+                strategies={strategies}
+                interpretation={interpretation}
+                system={system}
+                className="h-[200px] shrink-0 lg:h-[220px]"
               />
-              <CanvasLegend />
             </div>
 
-            <TimelineControls className="shrink-0" />
+            <div className="hidden w-[240px] shrink-0 flex-col gap-1.5 lg:flex xl:w-[280px]">
+              <LayerPanel className="min-h-0 flex-[1.1]" />
+              <RiskControls system={system} className="min-h-0 flex-1" />
+            </div>
+          </div>
+        </div>
 
-            {/* Secondary analytics: present on desktop, a sheet on small screens. */}
+        {/* —— Mobile: one job per tab, nothing dropped —— */}
+        <div className="flex min-h-0 flex-1 flex-col md:hidden">
+          {mobileTab === "radar" ? (
+            <>
+              {toolbar}
+              <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-1.5">
+                {canvas}
+                <TimelineControls className="shrink-0" />
+                <ExposureStrip system={system} />
+              </div>
+            </>
+          ) : null}
+
+          {mobileTab === "state" ? (
+            <InterpretationPanel
+              data={interpretation}
+              className="min-h-0 flex-1 rounded-none border-0"
+            />
+          ) : null}
+
+          {mobileTab === "desk" ? (
             <BottomPanel
               chart={chart}
               strategies={strategies}
               interpretation={interpretation}
               system={system}
-              className="hidden h-[210px] shrink-0 md:flex"
+              className="min-h-0 flex-1 rounded-none border-0"
             />
+          ) : null}
 
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0 md:hidden"
-                >
-                  <LayoutPanelTop className="h-3 w-3" />
-                  Analysis
-                </Button>
-              </SheetTrigger>
-              <SheetContent title="Analysis" side="bottom" className="p-0">
-                <BottomPanel
-                  chart={chart}
-                  strategies={strategies}
-                  interpretation={interpretation}
-                  system={system}
-                  className="h-[60vh] rounded-none border-0 shadow-none"
-                />
-              </SheetContent>
-            </Sheet>
-          </div>
-
-          {/* Right rail */}
-          <div className="hidden w-[290px] shrink-0 flex-col gap-2 xl:flex">
-            <InterpretationPanel
-              data={interpretation}
-              className="max-h-[46%] shrink-0"
+          {mobileTab === "risk" ? (
+            <RiskControls
+              system={system}
+              className="min-h-0 flex-1 rounded-none border-0"
             />
-            <LayerPanel className="min-h-0 flex-1" />
-          </div>
+          ) : null}
+
+          {mobileTab === "layers" ? (
+            <LayerPanel className="min-h-0 flex-1 rounded-none border-0" />
+          ) : null}
+
+          <MobileTabBar active={mobileTab} onChange={setMobileTab} />
         </div>
       </main>
     </div>
   );
 }
 
-/**
- * Canvas legend. Encodings are shown with the same dash pattern and weight the
- * chart uses, so it is a key rather than a colour swatch list.
- */
-function CanvasLegend() {
+function CanvasLegend({ className }: { className?: string }) {
   const items = [
-    { label: "SPY", color: "#E6EDF7", dash: false },
-    { label: "VWAP", color: "#FBBF24", dash: false },
-    { label: "Median", color: "#22D3EE", dash: false },
+    { label: "SPY", color: "#F8FAFC", dash: false },
+    { label: "VWAP", color: "#FACC15", dash: false },
+    { label: "−GEX", color: "#3B82F6", dash: false },
+    { label: "+GEX", color: "#EF4444", dash: false },
     { label: "GEX Flip", color: "#67E8F9", dash: true },
     { label: "Call Wall", color: "#34D399", dash: true },
     { label: "Put Wall", color: "#F87171", dash: true },
@@ -221,11 +255,9 @@ function CanvasLegend() {
   return (
     <div
       className={cn(
-        // Top-left of the plot rect: the bottom strip belongs to the time axis,
-        // and the legend was landing on top of the tick labels. Hidden on phones,
-        // where it wrapped to two rows and ate a fifth of the canvas.
-        "pointer-events-none absolute left-[58px] top-1.5 hidden flex-wrap items-center gap-x-3 gap-y-1 sm:flex",
-        "rounded border border-line/60 bg-void/70 px-2 py-1 backdrop-blur-sm",
+        "pointer-events-none absolute flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-x-2.5 gap-y-1",
+        "border border-line/60 bg-void/75 px-2 py-1 backdrop-blur-sm",
+        className,
       )}
     >
       {items.map((item) => (

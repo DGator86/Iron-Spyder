@@ -35,10 +35,14 @@ export function LeftNav({
   active = "dashboard",
   onSelect,
   className,
+  paper = true,
+  connected = true,
 }: {
   active?: string;
   onSelect?: (id: string) => void;
   className?: string;
+  paper?: boolean;
+  connected?: boolean;
 }) {
   const [collapsed, setCollapsed] = React.useState(false);
 
@@ -81,7 +85,29 @@ export function LeftNav({
         })}
       </ul>
 
-      <div className="border-t border-line p-1.5">
+      <div className="space-y-1 border-t border-line p-1.5">
+        {!collapsed ? (
+          <div className="space-y-1 px-1.5 py-1 text-[9px] uppercase tracking-wider text-ink-mute">
+            <div className="flex items-center gap-1.5">
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  paper ? "bg-live" : "bg-warn",
+                )}
+              />
+              {paper ? "Paper Mode" : "Live Mode"}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  connected ? "bg-signal" : "bg-dead",
+                )}
+              />
+              {connected ? "Connected" : "Disconnected"}
+            </div>
+          </div>
+        ) : null}
         <button
           onClick={() => setCollapsed((c) => !c)}
           className={cn(

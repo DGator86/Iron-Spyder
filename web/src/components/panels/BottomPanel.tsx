@@ -122,98 +122,251 @@ function StrategyTable({
   }
 
   return (
-    <table className="w-full border-collapse text-[11px]">
-      <thead className="sticky top-0 z-10 bg-panel">
-        <tr className="text-[9px] uppercase tracking-wider text-ink-mute">
-          <Th className="w-8 text-center">#</Th>
-          <Th className="text-left">Strategy</Th>
-          <Th className="text-left">Exp</Th>
-          <Th className="text-left">Strikes</Th>
-          <Th>Net</Th>
-          <Th>Max Profit</Th>
-          <Th>Max Loss</Th>
-          <Th>POP</Th>
-          <Th>EV</Th>
-          <Th>R/R</Th>
-          <Th>Utility</Th>
-          <Th>Fill</Th>
-          <Th>Assign</Th>
-          <Th className="w-16 text-center">Payoff</Th>
-        </tr>
-      </thead>
-      <tbody>
+    <>
+      {/* Phone: expandable cards — every desk column stays reachable */}
+      <ul className="divide-y divide-line/70 md:hidden">
         {strategies.map((s) => {
           const selected = s.strategyId === selectedId;
           const geo = strategyGeometry(s);
+          const legs = s.legs
+            .map(
+              (l) =>
+                `${l.quantity > 0 ? "+" : ""}${l.quantity}×${l.strike}${l.right[0].toUpperCase()}`,
+            )
+            .join(" ");
           return (
-            <tr
-              key={s.strategyId}
-              onClick={() => onSelect(s.strategyId)}
-              className={cn(
-                "cursor-pointer border-t border-line/60 transition-colors",
-                selected ? "bg-signal/10" : "hover:bg-raised/50",
-              )}
-            >
-              <Td className="text-center">
-                <span
-                  className={cn(
-                    "inline-grid h-4 w-4 place-items-center rounded text-[9px] font-bold",
-                    s.rank === 1
-                      ? "bg-warn text-void"
-                      : "bg-raised text-ink-dim",
-                  )}
-                >
-                  {s.rank}
-                </span>
-              </Td>
-              <Td className="text-left font-medium text-ink">{s.label}</Td>
-              <Td className="text-left text-ink-mute">{s.expiration}</Td>
-              <Td className="text-left">
-                <span className="tnum text-ink-dim">
-                  {s.legs
-                    .map(
-                      (l) =>
-                        `${l.quantity > 0 ? "+" : ""}${l.quantity}×${l.strike}${l.right[0].toUpperCase()}`,
-                    )
-                    .join(" ")}
-                </span>
-              </Td>
-              <Td className={s.isCredit ? "text-bull" : "text-bear"}>
-                {s.isCredit ? "+" : "−"}
-                {usd(s.netPrice)}
-              </Td>
-              <Td className="text-bull">
-                {s.maxProfit === null ? "Unlimited" : usd(s.maxProfit)}
-              </Td>
-              <Td className="text-bear">{usd(s.maxLoss)}</Td>
-              <Td>{pct(s.probabilityOfProfit, 0)}</Td>
-              <Td className={s.expectedValue >= 0 ? "text-bull" : "text-bear"}>
-                {usd(s.expectedValue)}
-              </Td>
-              <Td>{s.expectedReturnOnRisk.toFixed(2)}</Td>
-              <Td className="text-signal">{s.utility.toFixed(2)}</Td>
-              <Td>{pct(s.fillProbability, 0)}</Td>
-              <Td>
-                <Badge
-                  tone={
-                    s.assignmentRisk === "high"
-                      ? "bear"
-                      : s.assignmentRisk === "medium"
-                        ? "warn"
-                        : "neutral"
-                  }
-                >
-                  {s.assignmentRisk}
-                </Badge>
-              </Td>
-              <Td className="text-center">
-                <PayoffSpark curve={geo.curve} className="mx-auto h-6 w-14" />
-              </Td>
-            </tr>
+            <li key={s.strategyId}>
+              <button
+                type="button"
+                onClick={() => onSelect(s.strategyId)}
+                className={cn(
+                  "w-full px-3 py-2.5 text-left transition-colors",
+                  selected ? "bg-signal/10" : "active:bg-raised/60",
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className={cn(
+                        "inline-grid h-5 w-5 shrink-0 place-items-center rounded text-[10px] font-bold",
+                        s.rank === 1
+                          ? "bg-warn text-void"
+                          : "bg-raised text-ink-dim",
+                      )}
+                    >
+                      {s.rank}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="truncate text-[12px] font-semibold text-ink">
+                        {s.label}
+                      </div>
+                      <div className="truncate text-[10px] text-ink-mute">
+                        {s.expiration} · {legs}
+                      </div>
+                    </div>
+                  </div>
+                  <PayoffSpark curve={geo.curve} className="h-6 w-14 shrink-0" />
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+                  <div>
+                    <div className="text-[9px] uppercase tracking-wider text-ink-mute">
+                      Max profit
+                    </div>
+                    <div className="tnum font-semibold text-bull">
+                      {s.maxProfit === null ? "∞" : usd(s.maxProfit)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[9px] uppercase tracking-wider text-ink-mute">
+                      Max loss
+                    </div>
+                    <div className="tnum font-semibold text-bear">
+                      {usd(s.maxLoss)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[9px] uppercase tracking-wider text-ink-mute">
+                      POP
+                    </div>
+                    <div className="tnum font-semibold text-ink">
+                      {pct(s.probabilityOfProfit, 0)}
+                    </div>
+                  </div>
+                </div>
+                {selected ? (
+                  <div className="mt-2 grid grid-cols-3 gap-2 border-t border-line/60 pt-2 text-[11px]">
+                    <div>
+                      <div className="text-[9px] uppercase tracking-wider text-ink-mute">
+                        Net
+                      </div>
+                      <div
+                        className={cn(
+                          "tnum font-semibold",
+                          s.isCredit ? "text-bull" : "text-bear",
+                        )}
+                      >
+                        {s.isCredit ? "+" : "−"}
+                        {usd(s.netPrice)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] uppercase tracking-wider text-ink-mute">
+                        EV
+                      </div>
+                      <div
+                        className={cn(
+                          "tnum font-semibold",
+                          s.expectedValue >= 0 ? "text-bull" : "text-bear",
+                        )}
+                      >
+                        {usd(s.expectedValue)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] uppercase tracking-wider text-ink-mute">
+                        R/R
+                      </div>
+                      <div className="tnum font-semibold text-ink">
+                        {s.expectedReturnOnRisk.toFixed(2)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] uppercase tracking-wider text-ink-mute">
+                        Utility
+                      </div>
+                      <div className="tnum font-semibold text-signal">
+                        {s.utility.toFixed(2)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] uppercase tracking-wider text-ink-mute">
+                        Fill
+                      </div>
+                      <div className="tnum font-semibold text-ink">
+                        {pct(s.fillProbability, 0)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] uppercase tracking-wider text-ink-mute">
+                        Assign
+                      </div>
+                      <Badge
+                        tone={
+                          s.assignmentRisk === "high"
+                            ? "bear"
+                            : s.assignmentRisk === "medium"
+                              ? "warn"
+                              : "neutral"
+                        }
+                      >
+                        {s.assignmentRisk}
+                      </Badge>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-1.5 text-[9px] uppercase tracking-wider text-ink-mute/80">
+                    Tap for EV · R/R · fill · assign
+                  </div>
+                )}
+              </button>
+            </li>
           );
         })}
-      </tbody>
-    </table>
+      </ul>
+
+      <table className="hidden w-full border-collapse text-[11px] md:table">
+        <thead className="sticky top-0 z-10 bg-panel">
+          <tr className="text-[9px] uppercase tracking-wider text-ink-mute">
+            <Th className="w-8 text-center">#</Th>
+            <Th className="text-left">Strategy</Th>
+            <Th className="text-left">Exp</Th>
+            <Th className="text-left">Strikes</Th>
+            <Th>Net</Th>
+            <Th>Max Profit</Th>
+            <Th>Max Loss</Th>
+            <Th>POP</Th>
+            <Th>EV</Th>
+            <Th>R/R</Th>
+            <Th>Utility</Th>
+            <Th>Fill</Th>
+            <Th>Assign</Th>
+            <Th className="w-16 text-center">Payoff</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {strategies.map((s) => {
+            const selected = s.strategyId === selectedId;
+            const geo = strategyGeometry(s);
+            return (
+              <tr
+                key={s.strategyId}
+                onClick={() => onSelect(s.strategyId)}
+                className={cn(
+                  "cursor-pointer border-t border-line/60 transition-colors",
+                  selected ? "bg-signal/10" : "hover:bg-raised/50",
+                )}
+              >
+                <Td className="text-center">
+                  <span
+                    className={cn(
+                      "inline-grid h-4 w-4 place-items-center rounded text-[9px] font-bold",
+                      s.rank === 1
+                        ? "bg-warn text-void"
+                        : "bg-raised text-ink-dim",
+                    )}
+                  >
+                    {s.rank}
+                  </span>
+                </Td>
+                <Td className="text-left font-medium text-ink">{s.label}</Td>
+                <Td className="text-left text-ink-mute">{s.expiration}</Td>
+                <Td className="text-left">
+                  <span className="tnum text-ink-dim">
+                    {s.legs
+                      .map(
+                        (l) =>
+                          `${l.quantity > 0 ? "+" : ""}${l.quantity}×${l.strike}${l.right[0].toUpperCase()}`,
+                      )
+                      .join(" ")}
+                  </span>
+                </Td>
+                <Td className={s.isCredit ? "text-bull" : "text-bear"}>
+                  {s.isCredit ? "+" : "−"}
+                  {usd(s.netPrice)}
+                </Td>
+                <Td className="text-bull">
+                  {s.maxProfit === null ? "Unlimited" : usd(s.maxProfit)}
+                </Td>
+                <Td className="text-bear">{usd(s.maxLoss)}</Td>
+                <Td>{pct(s.probabilityOfProfit, 0)}</Td>
+                <Td className={s.expectedValue >= 0 ? "text-bull" : "text-bear"}>
+                  {usd(s.expectedValue)}
+                </Td>
+                <Td>{s.expectedReturnOnRisk.toFixed(2)}</Td>
+                <Td className="text-signal">{s.utility.toFixed(2)}</Td>
+                <Td>{pct(s.fillProbability, 0)}</Td>
+                <Td>
+                  <Badge
+                    tone={
+                      s.assignmentRisk === "high"
+                        ? "bear"
+                        : s.assignmentRisk === "medium"
+                          ? "warn"
+                          : "neutral"
+                    }
+                  >
+                    {s.assignmentRisk}
+                  </Badge>
+                </Td>
+                <Td className="text-center">
+                  <PayoffSpark curve={geo.curve} className="mx-auto h-6 w-14" />
+                </Td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </>
   );
 }
 

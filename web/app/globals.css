@@ -2,17 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
- * Fonts are declared as stacks rather than fetched via next/font so the build
- * has no network dependency. The mono stack carries every number on screen —
- * tabular figures matter more than the typeface.
- */
 :root {
-  --font-sans: "Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", sans-serif;
-  --font-mono: "JetBrains Mono", "SF Mono", "Roboto Mono", ui-monospace, SFMono-Regular, Menlo,
-    Consolas, monospace;
-
   color-scheme: dark;
 }
 
@@ -20,35 +10,34 @@
   html,
   body {
     @apply h-full bg-void text-ink antialiased;
-    font-family: var(--font-sans);
   }
 
   body {
-    /* Faint vignette so the canvas reads as an illuminated surface. */
-    background-image: radial-gradient(
-      ellipse 120% 80% at 50% 0%,
-      rgba(20, 40, 70, 0.35) 0%,
-      rgba(5, 9, 15, 0) 70%
-    );
+    background-image:
+      radial-gradient(
+        ellipse 110% 70% at 50% -10%,
+        rgba(34, 211, 238, 0.06) 0%,
+        transparent 55%
+      ),
+      linear-gradient(180deg, #070d16 0%, #05090f 45%, #04070c 100%);
     background-attachment: fixed;
   }
 
-  /* Every figure on this screen is compared against another figure. */
   .tnum {
-    font-family: var(--font-mono);
+    font-family: var(--font-mono), ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1, "zero" 1;
   }
 
   ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-line-bright/60;
+    @apply rounded-sm bg-line-bright/55;
   }
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-line-bright;
@@ -61,7 +50,7 @@
 
 @layer components {
   .panel {
-    @apply rounded-lg border border-line bg-panel/80 shadow-panel backdrop-blur-sm;
+    @apply rounded-md border border-line bg-panel/90 shadow-panel backdrop-blur-sm;
   }
 
   .panel-header {
@@ -72,7 +61,6 @@
     @apply text-micro font-semibold uppercase tracking-[0.14em] text-ink-dim;
   }
 
-  /* Structural-veto and low-confidence overlays: pattern, never colour alone. */
   .hatch-warn {
     background-image: repeating-linear-gradient(
       45deg,
@@ -84,7 +72,6 @@
   }
 }
 
-/* ECharts injects its own tooltip container; keep it inside the design system. */
 .echarts-tooltip-reset {
   background: transparent !important;
   border: 0 !important;

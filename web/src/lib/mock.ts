@@ -198,13 +198,15 @@ function gexAt(price: number): number {
   const bump = (center: number, weight: number, width: number) =>
     weight * Math.exp(-((price - center) ** 2) / (2 * width * width));
 
+  // Stronger wall / trough contrast so the pressure field reads like the
+  // reference CFD-style map (warm mass at the walls, blue trough under flip).
   return (
-    bump(CALL_WALL, 2.4, 3.2) +
-    bump(PIN_STRIKE, 1.3, 1.8) +
-    bump(GAMMA_FLIP + 2, 0.9, 2.4) -
-    bump(PUT_WALL, 2.1, 3.0) -
-    bump(GAMMA_FLIP - 4, 1.5, 2.6) -
-    bump(SPOT - 8, 0.7, 3.5)
+    bump(CALL_WALL, 3.4, 2.8) +
+    bump(PIN_STRIKE, 1.8, 1.6) +
+    bump(GAMMA_FLIP + 2.5, 1.3, 2.1) -
+    bump(PUT_WALL, 3.1, 2.6) -
+    bump(GAMMA_FLIP - 3.5, 2.4, 2.2) -
+    bump(SPOT - 7, 1.1, 3.0)
   );
 }
 
@@ -304,26 +306,32 @@ export function generateSnapshot(opts: MockOptions): RadarSnapshot {
   // ---- GEX surface (price-dependent, replicated across time) -----------
   // GEX is a function of spot at this snapshot, not of time. Replicating the
   // profile across the time axis is the honest projection onto the canvas.
+  // Soft-smooth vertically so the pressure field reads as a fluid gradient.
   const gexColumn = priceAxis.map((p) => gexAt(p));
-  const gexSurface = minutesAxis.map(() => gexColumn);
+  const gexSurface = smoothField(
+    minutesAxis.map(() => gexColumn.slice()),
+    1,
+  );
 
   // ---- Flow arrows ------------------------------------------------------
-  // Arrows point toward the price dealers are pushed to hedge into: in positive
-  // gamma they lean back toward the flip, in negative gamma they lean away.
+  // Dense lattice: arrows point the way dealer hedging pushes spot
+  // (+GEX → toward flip, −GEX → away). This is the pressure that moves price.
   const vectors = [];
-  const arrowTimeStride = Math.max(1, Math.floor(TIME_COLUMNS / 22));
-  const arrowPriceStride = Math.max(1, Math.floor(PRICE_ROWS / 14));
+  const arrowTimeStride = Math.max(1, Math.floor(TIME_COLUMNS / 28));
+  const arrowPriceStride = Math.max(1, Math.floor(PRICE_ROWS / 18));
+  const gexPeak = Math.max(...gexColumn.map(Math.abs), 1);
   for (let t = 0; t < TIME_COLUMNS; t += arrowTimeStride) {
     for (let p = 0; p < PRICE_ROWS; p += arrowPriceStride) {
       const price = priceAxis[p];
-      const g = gexAt(price);
+      const g = gexColumn[p];
       const toward =
         g >= 0 ? Math.sign(GAMMA_FLIP - price) : Math.sign(price - GAMMA_FLIP);
-      const strength = Math.min(1, Math.abs(g) / 2.4);
+      const strength = Math.min(1, Math.abs(g) / gexPeak);
+      if (strength < 0.05) continue;
       vectors.push({
         timeIndex: t,
         priceIndex: p,
-        dx: 1,
+        dx: 0.55 + 0.45 * strength,
         dy: toward * strength,
         strength,
       });

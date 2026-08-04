@@ -2,9 +2,8 @@
  * Colour ramps for the canvas fields.
  *
  * Stops are [position, r, g, b, a]. Alpha is part of the ramp, not a uniform
- * multiplier, because the brief requires low-probability regions to fall away
- * to fully transparent so stacked layers stay readable. A flat alpha would
- * turn every field into an opaque sheet the moment two are enabled together.
+ * multiplier, because low-magnitude regions must fall away so stacked layers
+ * stay readable.
  */
 
 export type Stop = [number, number, number, number, number];
@@ -30,19 +29,25 @@ export const DENSITY_RAMP: Ramp = [
 ];
 
 /**
- * Net gamma exposure — diverging, zero-centred.
+ * Net gamma exposure — pressure field that moves price.
  *
- * Red below zero (dealers amplify), green above (dealers dampen), transparent
- * at the crossing so the gamma flip reads as a gap rather than a colour.
+ * Diverging, zero-centred, matching the desk reference:
+ *   blue  = negative GEX (dealers amplify — unstable trough)
+ *   red   = positive GEX (dealers dampen — resistance / pin mass)
+ *
+ * Near-zero stays a dark navy wash (not a hole) so the field reads as a
+ * continuous fluid pressure map instead of striped bands with gaps.
  */
 export const GEX_RAMP: Ramp = [
-  [0.0, 226, 52, 52, 132],
-  [0.22, 198, 62, 72, 74],
-  [0.42, 96, 44, 72, 20],
-  [0.5, 20, 26, 40, 0],
-  [0.58, 44, 92, 74, 20],
-  [0.78, 52, 190, 130, 74],
-  [1.0, 46, 226, 148, 132],
+  [0.0, 18, 56, 210, 235],
+  [0.12, 28, 110, 230, 220],
+  [0.26, 40, 170, 220, 195],
+  [0.38, 55, 150, 170, 110],
+  [0.5, 18, 28, 48, 55],
+  [0.62, 180, 90, 40, 120],
+  [0.74, 220, 100, 36, 195],
+  [0.88, 236, 64, 38, 225],
+  [1.0, 248, 42, 32, 245],
 ];
 
 /** Implied volatility — single-hue violet, alpha carries magnitude. */
