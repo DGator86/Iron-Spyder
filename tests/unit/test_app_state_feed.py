@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from spy_der.app.state import resolve_market_provider
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+
+from spy_der.app.state import AppState, resolve_market_provider
 from spy_der.data.providers.base import SyntheticProvider
 from spy_der.data.providers.tradier import TradierProvider
 
@@ -39,3 +42,31 @@ def test_resolve_market_provider_prefers_tradier(monkeypatch):
     provider, feed = resolve_market_provider("broad_range")
     assert feed == "tradier"
     assert isinstance(provider, _Ok)
+
+
+def test_current_refreshes_when_last_result_is_stale(monkeypatch):
+    monkeypatch.setenv("IRON_SPYDER_API_MAX_AGE_SECONDS", "30")
+    monkeypatch.setenv("IRON_SPYDER_FORCE_SYNTHETIC", "1")
+    monkeypatch.delenv("TRADIER_ACCESS_TOKEN", raising=False)
+
+    state = AppState(scenario_name="broad_range")
+    calls = {"n": 0}
+    original = state.run_once
+
+    def counted(at=None):
+        calls["n"] += 1
+        return original(at=at)
+
+    state.run_once = counted  # type: ignore[method-assign]
+    first = state.current()
+    assert calls["n"] == 1
+    # Fresh enough — reuse.
+    again = state.current()
+    assert again is first
+    assert calls["n"] == 1
+    # Age the cached result past the max age.
+    state.last_result = SimpleNamespace(
+        timestamp=datetime.now(UTC) - timedelta(seconds=45)
+    )
+    state.current()
+    assert calls["n"] == 2
