@@ -8,6 +8,35 @@
 set -euo pipefail
 
 APP_DIR=${IRON_SPYDER_APP_DIR:-/opt/iron-spyder}
+ENV_FILE=${IRON_SPYDER_ENV_FILE:-/etc/iron-spyder/iron-spyder.env}
+COMPOSE_ENV="$APP_DIR/.env"
+
+# Read a single KEY=value from an env file without sourcing secrets into bash.
+# Strips surrounding single/double quotes. Empty / missing -> empty string.
+_read_env_key() {
+    local file="$1" key="$2" line value
+    [ -f "$file" ] || return 0
+    line=$(grep -E "^${key}=" "$file" | tail -n1 || true)
+    [ -n "$line" ] || return 0
+    value="${line#*=}"
+    value="${value%$'\r'}"
+    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+        value="${value:1:-1}"
+    elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+        value="${value:1:-1}"
+    fi
+    printf '%s' "$value"
+}
+
+# Honour an explicitly exported DEPLOY_BRANCH, else the secrets file, else
+# compose .env. Without this the timer silently tracks `main` and can roll a
+# deliberate feature-branch pin back to the last merged (often synthetic) tip.
+if [ -z "${DEPLOY_BRANCH:-}" ]; then
+    DEPLOY_BRANCH="$(_read_env_key "$ENV_FILE" DEPLOY_BRANCH)"
+fi
+if [ -z "${DEPLOY_BRANCH:-}" ]; then
+    DEPLOY_BRANCH="$(_read_env_key "$COMPOSE_ENV" DEPLOY_BRANCH)"
+fi
 BRANCH=${DEPLOY_BRANCH:-main}
 
 if [ ! -d "$APP_DIR/.git" ]; then

@@ -265,6 +265,20 @@ def test_self_update_is_a_noop_when_already_current() -> None:
     assert 'if [ "$local_sha" = "$remote_sha" ]' in text
 
 
+def test_self_update_reads_deploy_branch_from_secrets_file() -> None:
+    """The timer must honour DEPLOY_BRANCH pins in iron-spyder.env.
+
+    Without this, a VPS pinned to a live-feed branch silently redeploys
+    ``main`` every poll and snaps back to synthetic prices.
+    """
+    text = (_DEPLOY / "self-update.sh").read_text(encoding="utf-8")
+    assert "_read_env_key" in text
+    assert '_read_env_key "$ENV_FILE" DEPLOY_BRANCH' in text
+    assert "iron-spyder.env" in text
+    unit = (_DEPLOY / "iron-spyder-update.service").read_text(encoding="utf-8")
+    assert "EnvironmentFile=-/etc/iron-spyder/iron-spyder.env" in unit
+
+
 def test_update_timer_polls_on_a_bounded_interval() -> None:
     text = (_DEPLOY / "iron-spyder-update.timer").read_text(encoding="utf-8")
     assert "OnUnitActiveSec=" in text
