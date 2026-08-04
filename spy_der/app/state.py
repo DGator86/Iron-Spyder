@@ -114,8 +114,34 @@ class AppState:
             return self.last_result
 
     def current(self) -> PipelineResult:
-        """Return the last result, running a cycle if none exists yet."""
-        return self.last_result or self.run_once()
+        """Return a fresh-enough result for desk endpoints.
+
+        The first call seeds ``last_result``. Later calls reuse it only while it
+        is younger than :meth:`_max_result_age` — otherwise the public API and
+        Vercel chart freeze on a single morning snapshot while the supervisor
+        keeps trading against live Tradier.
+        """
+        result = self.last_result
+        if result is not None and not self._is_stale(result):
+            return result
+        return self.run_once()
+
+    def _max_result_age(self) -> timedelta:
+        raw = os.environ.get("IRON_SPYDER_API_MAX_AGE_SECONDS", "").strip()
+        if raw:
+            try:
+                return timedelta(seconds=max(15, int(raw)))
+            except ValueError:
+                pass
+        # Cap at 60s so a 5s UI poll cannot serve a multi-hour-old chain.
+        minutes = float(os.environ.get("IRON_SPYDER_INTERVAL_MINUTES") or 5)
+        return timedelta(seconds=min(60.0, max(30.0, minutes * 60.0)))
+
+    def _is_stale(self, result: PipelineResult) -> bool:
+        ts = result.timestamp
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+        return datetime.now(UTC) - ts.astimezone(UTC) >= self._max_result_age()
 
     def set_scenario(self, name: str) -> None:
         """Point the provider at a synthetic scenario (research aid).
