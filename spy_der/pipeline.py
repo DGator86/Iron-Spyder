@@ -15,9 +15,12 @@ with a recorded reason, never a partially evaluated trade.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from uuid import uuid4
+
+log = logging.getLogger(__name__)
 
 from spy_der.data.persistence.audit import AuditStore, ComponentVersions, DecisionRecord
 from spy_der.data.validators.quality import DataQualityConfig, DataQualityReport, assess
@@ -106,11 +109,23 @@ class DecisionPipeline:
         exits = self._manage_open_positions(snapshot)
 
         if not quality.is_tradeable:
+            # Trading stays locked, but the desk still needs GEX / forecast
+            # surfaces. Overnight chains routinely trip wide-spread minors; that
+            # must not blank the public dashboard back to synthetic SPY 550.
+            analytics = None
+            forecast = None
+            try:
+                analytics = build_features(snapshot, self.features)
+                forecast, _paths = self.forecast_engine.forecast(analytics)
+            except Exception as exc:  # noqa: BLE001 - desk path must not raise
+                log.warning("desk surfaces unavailable under DQ lockout: %s", exc)
             return self._no_trade(
                 snapshot,
                 quality,
                 exits,
                 reasons=(f"data quality lockout: {quality.summary()}",),
+                analytics=analytics,
+                forecast=forecast,
             )
 
         analytics = build_features(snapshot, self.features)
