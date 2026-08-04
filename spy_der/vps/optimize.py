@@ -190,7 +190,16 @@ def enqueue_run(
     schedule = load_schedule(root)
     stamp = now or datetime.now(tz=UTC)
     job_id = f"opt-{stamp.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
-    job = {
+    # Stamp created_at into progress for stable polling clocks.
+    progress = default_progress(
+        phase="queued",
+        message="Waiting for worker",
+        current=0,
+        total=0,
+        percent=0.0,
+    )
+    progress["updated_at"] = stamp.isoformat()
+    job: dict[str, Any] = {
         "id": job_id,
         "status": "queued",
         "reason": reason,
@@ -201,16 +210,8 @@ def enqueue_run(
         "snapshot_limit": int(snapshot_limit or schedule.get("snapshot_limit") or 120),
         "import_path": str(ops["imports"]),
         "error": None,
-        "progress": default_progress(
-            phase="queued",
-            message="Waiting for worker",
-            current=0,
-            total=0,
-            percent=0.0,
-        ),
+        "progress": progress,
     }
-    # Stamp created_at into progress for stable polling clocks.
-    job["progress"]["updated_at"] = stamp.isoformat()
     atomic_write_json(ops["jobs"] / f"{job_id}.json", job)
     return job
 
