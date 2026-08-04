@@ -20,8 +20,6 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 from uuid import uuid4
 
-log = logging.getLogger(__name__)
-
 from spy_der.data.persistence.audit import AuditStore, ComponentVersions, DecisionRecord
 from spy_der.data.validators.quality import DataQualityConfig, DataQualityReport, assess
 from spy_der.domain.enums import ExitReason
@@ -39,6 +37,8 @@ from spy_der.models.forecast_engine import ForecastEngine
 from spy_der.optimizer.engine import OptimizationResult, StrategyOptimizer
 from spy_der.risk.engine import PortfolioState, RiskEngine
 from spy_der.risk.sizing import SizingResult
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
