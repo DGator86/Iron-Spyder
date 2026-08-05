@@ -1,13 +1,53 @@
-# Paper: production-shaped settings with simulated execution (spec 40 phase 2).
-starting_equity: 100000.0
+# Paper: aggressive retail simulation for open-ready operation.
+#
+# Tuned so a $1,000 account can actually size 1-wide SPY defined-risk
+# structures. Default risk fractions (0.5% of equity = $5) zero-size every
+# admissible trade on a small account — those are intentionally overridden.
+starting_equity: 1000.0
 audit_path: spyder_paper.db
 
 optimizer:
   valuation_paths: 800
   valuation_steps: 48
+  max_candidates_per_family: 16
+  family_probability_threshold: 0.10
+  min_fill_probability: 0.15
+  min_return_on_risk: 0.015
+  max_spread_ratio: 0.30
+  no_trade:
+    margin: 0.5
 
 forecast:
   n_paths: 2000
 
 risk:
-  base_risk_fraction: 0.005
+  # R_base = Equity * f; quality multipliers still shrink effective size.
+  base_risk_fraction: 0.15
+  trade:
+    min_confidence: 0.05
+    min_return_on_risk: 0.015
+    max_account_fraction_at_risk: 0.25
+    max_dollar_risk: 250.0
+    max_contracts: 5
+    max_spread_ratio: 0.30
+    min_liquidity_score: 0.25
+    max_assignment_risk: 0.35
+    min_data_quality: 0.60
+  portfolio:
+    max_open_strategies: 1
+    max_total_risk_fraction: 0.50
+    max_total_open_risk: 500.0
+    max_same_expiration_risk: 500.0
+    max_zero_dte_risk: 500.0
+    max_directional_risk: 500.0
+    max_capital_fraction: 0.80
+  session:
+    daily_loss_limit: 250.0
+    daily_loss_fraction: 0.25
+    max_consecutive_losses: 6
+    max_drawdown_fraction: 0.40
+    max_trades_per_session: 20
+    min_minutes_to_close: 15.0
+
+costs:
+  fill_probability_floor: 0.15
