@@ -197,7 +197,10 @@ interface EngineCandidate {
 export async function fetchLiveSnapshot(
   base: string,
   horizon: Horizon,
-  timeoutMs = 4000,
+  // Tradier chain refresh under the AppState lock regularly exceeds 4s when
+  // several desk endpoints fan out in parallel; aborting here forces synthetic
+  // SPY ~530 on the public radar and looks "dead" even while the VPS is live.
+  timeoutMs = 25_000,
 ): Promise<RadarSnapshot> {
   const [
     market,
